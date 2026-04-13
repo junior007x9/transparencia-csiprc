@@ -11,7 +11,6 @@ export async function getDadosCompletos() {
   const pRes = await client.execute("SELECT * FROM plantoes ORDER BY id");
   const sRes = await client.execute("SELECT * FROM servidores ORDER BY plantao_id, posicao_fila");
   
-  // CORREÇÃO AQUI PARA A VERCEL: avisando que é um array (any[])
   let motoristas: any[] = [];
   try {
     const mRes = await client.execute("SELECT * FROM motoristas ORDER BY posicao_fila");
@@ -31,8 +30,6 @@ export async function getDadosCompletos() {
 
 export async function configurarEscalaAutomatica(plantaoId: number, mes: number, ano: number, tipo: 'par' | 'impar') {
   const ultimoDia = new Date(ano, mes, 0).getDate();
-  
-  // CORREÇÃO PREVENTIVA AQUI: (string[])
   const diasArr: string[] = [];
 
   for (let dia = 1; dia <= ultimoDia; dia++) {
@@ -45,7 +42,7 @@ export async function configurarEscalaAutomatica(plantaoId: number, mes: number,
   
   await client.execute({
     sql: "UPDATE plantoes SET dias_plantao = ? WHERE id = ?",
-    args: [diasString, plantaoId]
+    args: [diasString, plantaoId] as any[]
   });
 
   return { success: true, dias: diasString };
@@ -55,11 +52,11 @@ export async function registrarViagemMotorista(idViajou: number) {
   const hoje = new Date().toISOString().split('T')[0];
   await client.execute({
     sql: "UPDATE motoristas SET posicao_fila = 2, ultima_viagem = ? WHERE id = ?",
-    args: [hoje, idViajou]
+    args: [hoje, idViajou] as any[]
   });
   await client.execute({
     sql: "UPDATE motoristas SET posicao_fila = 1 WHERE id != ?",
-    args: [idViajou]
+    args: [idViajou] as any[]
   });
   return { success: true };
 }
@@ -67,19 +64,19 @@ export async function registrarViagemMotorista(idViajou: number) {
 export async function registrarViagem(servidorId: number, plantaoId: number) {
   const maxPosResult = await client.execute({
     sql: "SELECT MAX(posicao_fila) as max_pos FROM servidores WHERE plantao_id = ?",
-    args: [plantaoId]
+    args: [plantaoId] as any[]
   });
   const maxPos = (maxPosResult.rows[0].max_pos as number) || 1;
   const hoje = new Date().toISOString().split('T')[0];
 
   await client.execute({
     sql: "UPDATE servidores SET posicao_fila = ?, ultima_viagem = ? WHERE id = ?",
-    args: [maxPos + 1, hoje, servidorId]
+    args: [maxPos + 1, hoje, servidorId] as any[]
   });
 
   await client.execute({
     sql: "UPDATE servidores SET posicao_fila = posicao_fila - 1 WHERE plantao_id = ? AND id != ?",
-    args: [plantaoId, servidorId]
+    args: [plantaoId, servidorId] as any[]
   });
   return { success: true };
 }
@@ -88,16 +85,17 @@ export async function atualizarServidor(id: number, dados: any) {
   if (dados.plantao_id) {
     const maxPosResult = await client.execute({
       sql: "SELECT MAX(posicao_fila) as max_pos FROM servidores WHERE plantao_id = ?",
-      args: [dados.plantao_id]
+      args: [dados.plantao_id] as any[]
     });
     const maxPos = (maxPosResult.rows[0].max_pos as number) || 0;
     dados.posicao_fila = maxPos + 1;
   }
   const fields = Object.keys(dados).map(key => `${key} = ?`).join(", ");
   const values = Object.values(dados);
+  
   await client.execute({
     sql: `UPDATE servidores SET ${fields} WHERE id = ?`,
-    args: [...values, id]
+    args: [...values, id] as any[] // <-- Correção exigida pela Vercel adicionada aqui
   });
   return { success: true };
 }
@@ -105,9 +103,10 @@ export async function atualizarServidor(id: number, dados: any) {
 export async function atualizarMotorista(id: number, dados: any) {
   const fields = Object.keys(dados).map(key => `${key} = ?`).join(", ");
   const values = Object.values(dados);
+  
   await client.execute({
     sql: `UPDATE motoristas SET ${fields} WHERE id = ?`,
-    args: [...values, id]
+    args: [...values, id] as any[] // <-- Correção exigida pela Vercel adicionada aqui
   });
   return { success: true };
 }
@@ -115,7 +114,7 @@ export async function atualizarMotorista(id: number, dados: any) {
 export async function atualizarDiasPlantao(id: number, novosDias: string) {
   await client.execute({
     sql: "UPDATE plantoes SET dias_plantao = ? WHERE id = ?",
-    args: [novosDias, id]
+    args: [novosDias, id] as any[]
   });
   return { success: true };
 }
@@ -123,14 +122,14 @@ export async function atualizarDiasPlantao(id: number, novosDias: string) {
 export async function corrigirNumeracaoFilas() {
   const mRes = await client.execute("SELECT id FROM motoristas ORDER BY posicao_fila ASC, id ASC");
   for (let i = 0; i < mRes.rows.length; i++) {
-    await client.execute({ sql: "UPDATE motoristas SET posicao_fila = ? WHERE id = ?", args: [i + 1, mRes.rows[i].id] });
+    await client.execute({ sql: "UPDATE motoristas SET posicao_fila = ? WHERE id = ?", args: [i + 1, mRes.rows[i].id] as any[] });
   }
 
   const pRes = await client.execute("SELECT id FROM plantoes");
   for (const p of pRes.rows) {
-    const sRes = await client.execute({ sql: "SELECT id FROM servidores WHERE plantao_id = ? ORDER BY posicao_fila ASC, id ASC", args: [p.id as number] });
+    const sRes = await client.execute({ sql: "SELECT id FROM servidores WHERE plantao_id = ? ORDER BY posicao_fila ASC, id ASC", args: [p.id as number] as any[] });
     for (let i = 0; i < sRes.rows.length; i++) {
-      await client.execute({ sql: "UPDATE servidores SET posicao_fila = ? WHERE id = ?", args: [i + 1, sRes.rows[i].id] });
+      await client.execute({ sql: "UPDATE servidores SET posicao_fila = ? WHERE id = ?", args: [i + 1, sRes.rows[i].id] as any[] });
     }
   }
   return { success: true };
