@@ -1,6 +1,6 @@
 import { getDadosCompletos } from "./actions";
 
-export const revalidate = 0;
+export const revalidate = 0; // Garante que a página carrega dados sempre atualizados
 
 const formatarParaBR = (dataString: string | null) => {
   if (!dataString) return "";
@@ -13,7 +13,6 @@ export default async function Home() {
   const { plantoes, motoristas } = await getDadosCompletos();
 
   // --- LÓGICA INTELIGENTE: Pegar os últimos a viajar ---
-  // 1. Junta todos os servidores e motoristas numa única lista
   const todosServidores = plantoes.flatMap((p: any) => 
     p.servidores.map((s: any) => ({ ...s, papel: 'Servidor', equipa: p.nome }))
   );
@@ -21,11 +20,10 @@ export default async function Home() {
     ({ ...m, papel: 'Motorista', equipa: 'Revezamento' })
   );
   
-  // 2. Filtra quem já viajou, organiza da data mais nova para a mais velha, e pega os 4 primeiros
   const ultimasViagens = [...todosServidores, ...todosMotoristas]
-    .filter(pessoa => pessoa.ultima_viagem) // Apenas quem tem data
+    .filter(pessoa => pessoa.ultima_viagem) 
     .sort((a, b) => new Date(b.ultima_viagem).getTime() - new Date(a.ultima_viagem).getTime())
-    .slice(0, 4); // Mostra os 4 mais recentes
+    .slice(0, 4); 
 
   return (
     <main className="min-h-screen bg-[#f8fafc] pb-16 font-sans relative overflow-hidden">
@@ -51,11 +49,11 @@ export default async function Home() {
 
       <div className="max-w-7xl mx-auto px-4 md:px-8 relative z-20 mt-[-4rem] space-y-10">
         
-        {/* NOVO: CARD DOS ÚLTIMOS QUE VIAJARAM */}
+        {/* CARD DOS ÚLTIMOS QUE VIAJARAM */}
         {ultimasViagens.length > 0 && (
           <section className="bg-white/90 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-indigo-900/10 border border-white overflow-hidden transform transition duration-500 hover:shadow-indigo-900/20">
             <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 p-5 text-white flex items-center justify-center gap-3">
-              <span className="text-2xl animate-bounce">⏱️</span>
+              <span className="text-3xl animate-bounce">⏱️</span>
               <h3 className="font-black uppercase tracking-widest text-sm drop-shadow-md">Atividade Recente: Últimas Viagens</h3>
             </div>
             
@@ -66,8 +64,8 @@ export default async function Home() {
                     {formatarParaBR(pessoa.ultima_viagem)}
                   </span>
                   <p className="font-black text-lg text-slate-800 leading-tight mb-1">{pessoa.nome}</p>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                    {pessoa.papel === 'Motorista' ? '🚗' : '🛡️'} {pessoa.equipa}
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="text-lg">{pessoa.papel === 'Motorista' ? '🚗' : '🛡️'}</span> {pessoa.equipa}
                   </p>
                 </div>
               ))}
@@ -79,7 +77,7 @@ export default async function Home() {
         {motoristas && motoristas.length > 0 && (
           <section className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-xl shadow-amber-900/5 border border-white overflow-hidden transform transition duration-500 hover:shadow-2xl hover:bg-white">
             <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 p-5 text-white flex items-center justify-center gap-3">
-              <span className="text-2xl">🚗</span>
+              <span className="text-3xl">🚗</span>
               <h3 className="font-black uppercase tracking-widest text-sm drop-shadow-md">Escala de Motoristas (Revezamento)</h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100">
@@ -94,9 +92,9 @@ export default async function Home() {
                     </div>
                     <div>
                       <p className={`font-black text-xl md:text-2xl tracking-tight uppercase ${idx === 0 ? 'text-amber-950' : 'text-slate-700'}`}>{m.nome}</p>
-                      <div className="flex items-center gap-1.5 mt-1.5">
-                        <span className="text-slate-400 text-xs">⏱️</span>
-                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-slate-500 text-xl drop-shadow-sm">⏱️</span>
+                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mt-0.5">
                           Última: {m.ultima_viagem ? formatarParaBR(m.ultima_viagem) : 'Sem registo'}
                         </p>
                       </div>
@@ -125,7 +123,7 @@ export default async function Home() {
                   <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-5 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
                   <div className="relative z-10">
                     <h2 className="text-2xl font-black uppercase tracking-wide drop-shadow-lg flex items-center gap-3">
-                      {ePortaria ? '🚪' : '🛡️'} {plantao.nome}
+                      <span className="text-3xl">{ePortaria ? '🚪' : '🛡️'}</span> {plantao.nome}
                     </h2>
                     <div className="inline-flex items-center gap-2 mt-3 bg-black/30 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-xl">
                       <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">📅 Escala:</span>
@@ -156,13 +154,13 @@ export default async function Home() {
                                 </p>
                                 {s.is_supervisor === 1 && <span className="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-black uppercase border border-blue-200">Sup</span>}
                               </div>
-                              <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-red-50 text-red-600 px-2.5 py-1 rounded-lg border border-red-100/50">
-                                  🌴 {s.data_folga || '--/--'}
+                              <div className="flex flex-wrap items-center gap-2 mt-2">
+                                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-100/50">
+                                  <span className="text-base drop-shadow-sm">🌴</span> <span className="mt-0.5">{s.data_folga || '--/--'}</span>
                                 </span>
                                 {!ePortaria && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-slate-100 text-slate-500 px-2.5 py-1 rounded-lg border border-slate-200/50">
-                                    ⏱️ {s.ultima_viagem ? formatarParaBR(s.ultima_viagem) : 'Sem registo'}
+                                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg border border-slate-200/50">
+                                    <span className="text-base drop-shadow-sm">⏱️</span> <span className="mt-0.5">{s.ultima_viagem ? formatarParaBR(s.ultima_viagem) : 'Sem registo'}</span>
                                   </span>
                                 )}
                               </div>
