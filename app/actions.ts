@@ -61,7 +61,6 @@ export async function registrarViagemMotorista(idViajou: number) {
   return { success: true };
 }
 
-// NOVA FUNÇÃO: Roda a fila de 2 em 2 educadores
 export async function registrarViagemDupla(plantaoId: number) {
   const hoje = new Date().toISOString().split('T')[0];
   
@@ -73,7 +72,6 @@ export async function registrarViagemDupla(plantaoId: number) {
   const servidores = sRes.rows;
   if (servidores.length === 0) return { success: false };
   
-  // Se por acaso só tiver 1 pessoa na equipa, roda só 1
   if (servidores.length === 1) {
      await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ? WHERE id = ?", args: [hoje, servidores[0].id] as any[] });
      return { success: true };
@@ -83,14 +81,45 @@ export async function registrarViagemDupla(plantaoId: number) {
   const id2 = servidores[1].id;
   const total = servidores.length;
 
-  // Atualiza a data dos 2 e joga-os para o fim da fila
   await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, posicao_fila = ? WHERE id = ?", args: [hoje, total - 1, id1] as any[] });
   await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, posicao_fila = ? WHERE id = ?", args: [hoje, total, id2] as any[] });
 
-  // Puxa todos os outros 2 posições para cima (ex: o 3º vira 1º)
   for (let i = 2; i < total; i++) {
      await client.execute({ sql: "UPDATE servidores SET posicao_fila = ? WHERE id = ?", args: [i - 1, servidores[i].id] as any[] });
   }
+
+  return { success: true };
+}
+
+// LÓGICA ATUALIZADA: Permite registrar viagem para QUALQUER posição e arruma a fila certinho
+export async function registrarViagem(servidorId: number, plantaoId: number) {
+  const hoje = new Date().toISOString().split('T')[0];
+
+  // Descobre a posição atual de quem viajou
+  const sRes = await client.execute({
+    sql: "SELECT posicao_fila FROM servidores WHERE id = ?",
+    args: [servidorId] as any[]
+  });
+  if (sRes.rows.length === 0) return { success: false };
+  const posAtual = sRes.rows[0].posicao_fila as number;
+
+  const maxPosResult = await client.execute({
+    sql: "SELECT MAX(posicao_fila) as max_pos FROM servidores WHERE plantao_id = ?",
+    args: [plantaoId] as any[]
+  });
+  const maxPos = (maxPosResult.rows[0].max_pos as number) || 1;
+
+  // Sobe apenas quem estava ATRÁS da pessoa que viajou
+  await client.execute({
+    sql: "UPDATE servidores SET posicao_fila = posicao_fila - 1 WHERE plantao_id = ? AND posicao_fila > ?",
+    args: [plantaoId, posAtual] as any[]
+  });
+
+  // Joga quem viajou para o fim da fila com a nova data
+  await client.execute({
+    sql: "UPDATE servidores SET posicao_fila = ?, ultima_viagem = ? WHERE id = ?",
+    args: [maxPos, hoje, servidorId] as any[]
+  });
 
   return { success: true };
 }
@@ -172,7 +201,6 @@ export async function removerServidor(id: number) {
   return { success: true };
 }
 
-// NOVA FUNÇÃO: Zerar o histórico de todo mundo
 export async function zerarHistoricoViagens() {
   await client.execute("UPDATE servidores SET ultima_viagem = NULL");
   await client.execute("UPDATE motoristas SET ultima_viagem = NULL");
