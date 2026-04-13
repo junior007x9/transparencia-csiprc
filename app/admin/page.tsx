@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getDadosCompletos, registrarViagem, registrarViagemMotorista, atualizarServidor, atualizarMotorista, configurarEscalaAutomatica, atualizarDiasPlantao, corrigirNumeracaoFilas, adicionarServidor, removerServidor } from "../actions";
+import { getDadosCompletos, registrarViagemDupla, registrarViagemMotorista, atualizarServidor, atualizarMotorista, configurarEscalaAutomatica, atualizarDiasPlantao, corrigirNumeracaoFilas, adicionarServidor, removerServidor, zerarHistoricoViagens } from "../actions";
 
 const formatarParaBR = (dataString: string | null) => {
   if (!dataString) return "";
@@ -49,22 +49,26 @@ export default function AdminPage() {
   const handleRepararFilas = async () => {
     if (confirm("Isso vai reorganizar o 1º, 2º, 3º de todos os servidores e motoristas para fechar os buracos da numeração. Continuar?")) {
       await corrigirNumeracaoFilas();
-      alert("✅ Numeração das filas reparada e organizada com sucesso!");
+      alert("✅ Numeração das filas reparada com sucesso!");
       carregar();
     }
   };
 
-  // --- NOVOS CONTROLOS DE MEMBROS ---
-  const handleAdicionarMembro = async (plantaoId: number, plantaoNome: string) => {
-    const nome = prompt(`Digite o nome do NOVO EDUCADOR para a equipe ${plantaoNome}:`);
-    if (nome) {
-      await adicionarServidor(plantaoId, nome);
+  const handleZerarHistorico = async () => {
+    if (confirm("⚠️ ATENÇÃO EXTREMA: Isso vai apagar a data de última viagem de TODOS os motoristas e educadores do sistema para começar um novo ciclo. Tem certeza absoluta?")) {
+      await zerarHistoricoViagens();
+      alert("✅ Histórico de viagens completamente zerado!");
       carregar();
     }
+  };
+
+  const handleAdicionarMembro = async (plantaoId: number, plantaoNome: string) => {
+    const nome = prompt(`Digite o nome do NOVO EDUCADOR para a equipe ${plantaoNome}:`);
+    if (nome) { await adicionarServidor(plantaoId, nome); carregar(); }
   };
 
   const handleRemoverMembro = async (id: number, nome: string) => {
-    if (confirm(`⚠️ ATENÇÃO: Tem a certeza que deseja REMOVER o educador "${nome}" do sistema de vez?\n\nA fila será reorganizada automaticamente.`)) {
+    if (confirm(`⚠️ Tem a certeza que deseja REMOVER o educador "${nome}" do sistema de vez?`)) {
       await removerServidor(id);
       carregar();
     }
@@ -73,10 +77,7 @@ export default function AdminPage() {
   const editDataViagemMotorista = async (id: number, atual: string) => {
     const dataAtualBR = formatarParaBR(atual);
     const nova = prompt("Corrigir data da viagem do MOTORISTA (DD/MM/AAAA):", dataAtualBR);
-    if (nova !== null) { 
-      await atualizarMotorista(id, { ultima_viagem: nova === "" ? null : formatarParaDB(nova) }); 
-      carregar(); 
-    }
+    if (nova !== null) { await atualizarMotorista(id, { ultima_viagem: nova === "" ? null : formatarParaDB(nova) }); carregar(); }
   };
 
   const limparDataMotorista = async (id: number) => {
@@ -89,10 +90,7 @@ export default function AdminPage() {
   const editDataViagem = async (id: number, atual: string) => {
     const dataAtualBR = formatarParaBR(atual);
     const nova = prompt("Corrigir data da última viagem (DD/MM/AAAA):", dataAtualBR);
-    if (nova !== null) { 
-      await atualizarServidor(id, { ultima_viagem: nova === "" ? null : formatarParaDB(nova) }); 
-      carregar(); 
-    }
+    if (nova !== null) { await atualizarServidor(id, { ultima_viagem: nova === "" ? null : formatarParaDB(nova) }); carregar(); }
   };
 
   const limparDataServidor = async (id: number) => {
@@ -115,11 +113,7 @@ export default function AdminPage() {
   const handleTrocarPlantao = async (id: number, atualId: number) => {
     const lista = plantoes.map(p => `${p.id}: ${p.nome}`).join("\n");
     const novoId = prompt(`Mover servidor para qual ID de equipa?\n\n${lista}`, atualId.toString());
-    
-    if (novoId && parseInt(novoId) !== atualId) {
-      await atualizarServidor(id, { plantao_id: parseInt(novoId) });
-      carregar();
-    }
+    if (novoId && parseInt(novoId) !== atualId) { await atualizarServidor(id, { plantao_id: parseInt(novoId) }); carregar(); }
   };
 
   if (loading) return (
@@ -152,25 +146,23 @@ export default function AdminPage() {
               Central de Comando
             </h1>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-            <button 
-              onClick={handleRepararFilas}
-              className="bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 px-5 py-3 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm"
-              title="Organiza os buracos do 1º, 2º, 3º"
-            >
-              🛠️ Reparar Numeração
+          <div className="flex flex-wrap gap-3 w-full md:w-auto">
+            
+            <button onClick={handleZerarHistorico} className="bg-red-900/40 hover:bg-red-600/60 border border-red-500/50 text-red-100 px-4 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-900/20" title="Apagar todas as datas de viagens do sistema">
+              ⚠️ Zerar Histórico
             </button>
 
-            <button 
-              onClick={handleConfiguracaoInteligente}
-              className="group relative px-5 py-3 font-black text-white rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-[0_0_20px_rgba(37,99,235,0.2)] hover:shadow-[0_0_25px_rgba(37,99,235,0.4)] transition-all flex items-center justify-center gap-2 text-[11px] uppercase tracking-wider overflow-hidden"
-            >
+            <button onClick={handleRepararFilas} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 px-4 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-sm">
+              🛠️ Organizar Fila
+            </button>
+
+            <button onClick={handleConfiguracaoInteligente} className="group relative px-5 py-3 font-black text-white rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-[0_0_20px_rgba(37,99,235,0.2)] transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider overflow-hidden">
               <div className="absolute inset-0 bg-white/20 group-hover:translate-x-full transition-transform duration-500 -translate-x-full skew-x-12"></div>
-              <span>⚡ Gerar Escala Mês</span>
+              <span>⚡ Gerar Escala</span>
             </button>
             
-            <button onClick={carregar} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 px-5 py-3 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all flex items-center justify-center gap-2">
-              ↻ Sincronizar
+            <button onClick={carregar} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 px-4 py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center">
+              ↻ Atualizar
             </button>
           </div>
         </header>
@@ -209,7 +201,7 @@ export default function AdminPage() {
                     </div>
                   </div>
                   {idx === 0 && (
-                    <button onClick={() => registrarViagemMotorista(m.id).then(carregar)} className="w-full xl:w-auto flex-shrink-0 bg-amber-500 hover:bg-amber-400 text-amber-950 px-5 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.3)] hover:shadow-[0_0_25px_rgba(245,158,11,0.5)] transition-all transform hover:-translate-y-0.5">
+                    <button onClick={() => registrarViagemMotorista(m.id).then(carregar)} className="w-full xl:w-auto flex-shrink-0 bg-amber-500 hover:bg-amber-400 text-amber-950 px-5 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.3)] transition-all transform hover:-translate-y-0.5">
                       Confirmar Viagem
                     </button>
                   )}
@@ -244,11 +236,7 @@ export default function AdminPage() {
                         ✏️ {plantao.dias_plantao || 'A definir'}
                       </button>
                     </div>
-                    {/* NOVO BOTÃO: ADICIONAR MEMBRO */}
-                    <button 
-                      onClick={() => handleAdicionarMembro(plantao.id, plantao.nome)}
-                      className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-4 py-2.5 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all shadow-sm"
-                    >
+                    <button onClick={() => handleAdicionarMembro(plantao.id, plantao.nome)} className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-4 py-2.5 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all shadow-sm">
                       ➕ Add Membro
                     </button>
                   </div>
@@ -262,18 +250,30 @@ export default function AdminPage() {
                         <th className="p-5 lg:p-6">Nome do Servidor</th>
                         <th className="p-5 lg:p-6 text-center">Gestão de Folga</th>
                         {!ePortaria && <th className="p-5 lg:p-6 text-center">Data Última Viagem</th>}
-                        {!ePortaria && <th className="p-5 lg:p-6 text-right pr-8">Ação Principal</th>}
+                        
+                        {/* O BOTÃO MAGICO DA DUPLA AQUI NO CABEÇALHO */}
+                        {!ePortaria && (
+                          <th className="p-5 lg:p-6 text-right pr-8">
+                            {plantao.servidores.length >= 2 ? (
+                              <button onClick={() => registrarViagemDupla(plantao.id).then(carregar)} className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-[0_0_20px_rgba(59,130,246,0.4)] transform hover:-translate-y-0.5 transition-all">
+                                ✈️ Viagem da Dupla (1º e 2º)
+                              </button>
+                            ) : (
+                              <span className="text-[9px] text-slate-600">Ação da Equipe</span>
+                            )}
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/40">
                       {plantao.servidores.map((s: any, idx: number) => {
-                        const proximo = idx === 0 && !ePortaria;
+                        const proximo = (idx === 0 || idx === 1) && !ePortaria;
                         return (
-                          <tr key={s.id} className={`hover:bg-white/[0.02] transition-colors ${proximo ? 'bg-emerald-900/10' : ''}`}>
+                          <tr key={s.id} className={`hover:bg-white/[0.02] transition-colors ${proximo ? 'bg-blue-900/10' : ''}`}>
                             
                             {!ePortaria && (
                               <td className="p-5 lg:p-6 text-center">
-                                <span className={`inline-flex items-center justify-center w-10 h-10 rounded-xl font-black text-sm shadow-inner ${proximo ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-emerald-500/20' : 'bg-slate-800 text-slate-500 border border-slate-700/50'}`}>
+                                <span className={`inline-flex items-center justify-center w-10 h-10 rounded-xl font-black text-sm shadow-inner ${proximo ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-blue-500/20' : 'bg-slate-800 text-slate-500 border border-slate-700/50'}`}>
                                   {s.posicao_fila}º
                                 </span>
                               </td>
@@ -293,7 +293,6 @@ export default function AdminPage() {
                                 <button onClick={() => handleTrocarPlantao(s.id, plantao.id)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-0.5 rounded uppercase tracking-widest transition-colors flex items-center gap-1" title="Mover para outra equipa">
                                   🔄 Mover
                                 </button>
-                                {/* NOVO BOTÃO: REMOVER MEMBRO */}
                                 <button onClick={() => handleRemoverMembro(s.id, s.nome)} className="text-[9px] bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/30 px-2 py-0.5 rounded uppercase tracking-widest transition-colors flex items-center gap-1" title="Apagar do sistema">
                                   🗑️ Apagar
                                 </button>
@@ -341,9 +340,9 @@ export default function AdminPage() {
                             {!ePortaria && (
                               <td className="p-5 lg:p-6 text-right pr-8">
                                 {proximo ? (
-                                  <button onClick={() => registrarViagem(s.id, plantao.id).then(carregar)} className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] transform hover:-translate-y-0.5 transition-all">
-                                    Finalizar Vez
-                                  </button>
+                                   <span className="text-[10px] text-blue-400 font-black uppercase tracking-widest bg-blue-900/20 px-4 py-2 rounded-xl border border-blue-500/30">
+                                     Na Dupla Atual
+                                   </span>
                                 ) : (
                                   <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">Aguardando</span>
                                 )}

@@ -1,6 +1,6 @@
 import { getDadosCompletos } from "./actions";
 
-export const revalidate = 0; // Garante que a página carrega dados sempre atualizados
+export const revalidate = 0; 
 
 const formatarParaBR = (dataString: string | null) => {
   if (!dataString) return "";
@@ -12,7 +12,6 @@ const formatarParaBR = (dataString: string | null) => {
 export default async function Home() {
   const { plantoes, motoristas } = await getDadosCompletos();
 
-  // --- LÓGICA INTELIGENTE: Pegar os últimos a viajar ---
   const todosServidores = plantoes.flatMap((p: any) => 
     p.servidores.map((s: any) => ({ ...s, papel: 'Servidor', equipa: p.nome }))
   );
@@ -28,11 +27,9 @@ export default async function Home() {
   return (
     <main className="min-h-screen bg-[#f8fafc] pb-16 font-sans relative overflow-hidden">
       
-      {/* Elementos Decorativos de Fundo */}
       <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-emerald-400/20 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob"></div>
       <div className="absolute top-[-10%] right-[-10%] w-96 h-96 bg-blue-400/20 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob animation-delay-2000"></div>
       
-      {/* Cabeçalho Premium */}
       <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 pt-16 pb-28 px-4 text-center rounded-b-[4rem] shadow-2xl relative z-10 border-b-4 border-emerald-500/50">
         <div className="max-w-3xl mx-auto">
           <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest mb-6 inline-block shadow-[0_0_15px_rgba(16,185,129,0.2)]">
@@ -49,7 +46,6 @@ export default async function Home() {
 
       <div className="max-w-7xl mx-auto px-4 md:px-8 relative z-20 mt-[-4rem] space-y-10">
         
-        {/* CARD DOS ÚLTIMOS QUE VIAJARAM */}
         {ultimasViagens.length > 0 && (
           <section className="bg-white/90 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-indigo-900/10 border border-white overflow-hidden transform transition duration-500 hover:shadow-indigo-900/20">
             <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 p-5 text-white flex items-center justify-center gap-3">
@@ -73,7 +69,6 @@ export default async function Home() {
           </section>
         )}
 
-        {/* ESCALA DE MOTORISTAS */}
         {motoristas && motoristas.length > 0 && (
           <section className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-xl shadow-amber-900/5 border border-white overflow-hidden transform transition duration-500 hover:shadow-2xl hover:bg-white">
             <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 p-5 text-white flex items-center justify-center gap-3">
@@ -112,7 +107,6 @@ export default async function Home() {
           </section>
         )}
 
-        {/* GRELHA DE EQUIPES */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {plantoes.map((plantao: any) => {
             const ePortaria = plantao.nome.toLowerCase().includes('portaria');
@@ -134,7 +128,8 @@ export default async function Home() {
                 
                 <ul className="divide-y divide-slate-100/80">
                   {plantao.servidores.map((s: any, idx: number) => {
-                    const proximo = idx === 0 && !ePortaria;
+                    // AGORA ILUMINA OS 2 PRIMEIROS (A DUPLA!)
+                    const proximo = (idx === 0 || idx === 1) && !ePortaria;
                     return (
                       <li key={s.id} className={`p-5 md:p-6 transition-all duration-300 ${proximo ? 'bg-gradient-to-r from-emerald-50/80 to-teal-50/30' : 'hover:bg-slate-50'}`}>
                         <div className="flex items-center justify-between gap-3">

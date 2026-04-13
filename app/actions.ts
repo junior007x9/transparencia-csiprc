@@ -61,23 +61,37 @@ export async function registrarViagemMotorista(idViajou: number) {
   return { success: true };
 }
 
-export async function registrarViagem(servidorId: number, plantaoId: number) {
-  const maxPosResult = await client.execute({
-    sql: "SELECT MAX(posicao_fila) as max_pos FROM servidores WHERE plantao_id = ?",
+// NOVA FUNÇÃO: Roda a fila de 2 em 2 educadores
+export async function registrarViagemDupla(plantaoId: number) {
+  const hoje = new Date().toISOString().split('T')[0];
+  
+  const sRes = await client.execute({
+    sql: "SELECT id, posicao_fila FROM servidores WHERE plantao_id = ? ORDER BY posicao_fila ASC",
     args: [plantaoId] as any[]
   });
-  const maxPos = (maxPosResult.rows[0].max_pos as number) || 1;
-  const hoje = new Date().toISOString().split('T')[0];
+  
+  const servidores = sRes.rows;
+  if (servidores.length === 0) return { success: false };
+  
+  // Se por acaso só tiver 1 pessoa na equipa, roda só 1
+  if (servidores.length === 1) {
+     await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ? WHERE id = ?", args: [hoje, servidores[0].id] as any[] });
+     return { success: true };
+  }
 
-  await client.execute({
-    sql: "UPDATE servidores SET posicao_fila = ?, ultima_viagem = ? WHERE id = ?",
-    args: [maxPos + 1, hoje, servidorId] as any[]
-  });
+  const id1 = servidores[0].id;
+  const id2 = servidores[1].id;
+  const total = servidores.length;
 
-  await client.execute({
-    sql: "UPDATE servidores SET posicao_fila = posicao_fila - 1 WHERE plantao_id = ? AND id != ?",
-    args: [plantaoId, servidorId] as any[]
-  });
+  // Atualiza a data dos 2 e joga-os para o fim da fila
+  await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, posicao_fila = ? WHERE id = ?", args: [hoje, total - 1, id1] as any[] });
+  await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, posicao_fila = ? WHERE id = ?", args: [hoje, total, id2] as any[] });
+
+  // Puxa todos os outros 2 posições para cima (ex: o 3º vira 1º)
+  for (let i = 2; i < total; i++) {
+     await client.execute({ sql: "UPDATE servidores SET posicao_fila = ? WHERE id = ?", args: [i - 1, servidores[i].id] as any[] });
+  }
+
   return { success: true };
 }
 
@@ -135,7 +149,6 @@ export async function corrigirNumeracaoFilas() {
   return { success: true };
 }
 
-// --- NOVAS FUNÇÕES: ADICIONAR E REMOVER SERVIDOR ---
 export async function adicionarServidor(plantaoId: number, nome: string) {
   const maxPosResult = await client.execute({
     sql: "SELECT MAX(posicao_fila) as max_pos FROM servidores WHERE plantao_id = ?",
@@ -155,7 +168,13 @@ export async function removerServidor(id: number) {
     sql: "DELETE FROM servidores WHERE id = ?",
     args: [id] as any[]
   });
-  // Arruma a fila automaticamente para não deixar buraco!
   await corrigirNumeracaoFilas();
+  return { success: true };
+}
+
+// NOVA FUNÇÃO: Zerar o histórico de todo mundo
+export async function zerarHistoricoViagens() {
+  await client.execute("UPDATE servidores SET ultima_viagem = NULL");
+  await client.execute("UPDATE motoristas SET ultima_viagem = NULL");
   return { success: true };
 }
