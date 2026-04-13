@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getDadosCompletos, registrarViagem, registrarViagemMotorista, atualizarServidor, atualizarMotorista, configurarEscalaAutomatica } from "../actions";
+// Olha a função atualizarDiasPlantao aqui adicionada no final da lista 👇
+import { getDadosCompletos, registrarViagem, registrarViagemMotorista, atualizarServidor, atualizarMotorista, configurarEscalaAutomatica, atualizarDiasPlantao } from "../actions";
 
 const formatarParaBR = (dataString: string | null) => {
   if (!dataString) return "";
@@ -46,7 +47,6 @@ export default function AdminPage() {
     }
   };
 
-  // FUNCIONALIDADES DE DATA (CORRIGIR E APAGAR)
   const editDataViagemMotorista = async (id: number, atual: string) => {
     const dataAtualBR = formatarParaBR(atual);
     const nova = prompt("Corrigir data da viagem do MOTORISTA (DD/MM/AAAA):", dataAtualBR);
@@ -79,7 +79,6 @@ export default function AdminPage() {
     }
   };
 
-  // FUNCIONALIDADES DE SERVIDOR (NOME, FOLGA E MOVER EQUIPA)
   const handleEditNome = async (id: number, atual: string) => {
     const novo = prompt("Corrigir nome do servidor:", atual);
     if (novo) { await atualizarServidor(id, { nome: novo }); carregar(); }
@@ -251,7 +250,7 @@ export default function AdminPage() {
                               </div>
                               <div className="flex items-center gap-2 mt-2">
                                 {s.is_supervisor === 1 && <span className="text-[8px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded font-black uppercase tracking-widest inline-block">Supervisor</span>}
-                                {/* BOTÃO MOVER EQUIPA (DE VOLTA!) */}
+                                {/* BOTÃO MOVER EQUIPA */}
                                 <button onClick={() => handleTrocarPlantao(s.id, plantao.id)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-0.5 rounded uppercase tracking-widest transition-colors flex items-center gap-1" title="Mover para outra equipa">
                                   🔄 Mover Equipa
                                 </button>
