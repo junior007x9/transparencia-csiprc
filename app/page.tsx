@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-// CORREÇÃO CRÍTICA PARA A VERCEL: mudou de "../actions" para "./actions"
-import { getDadosCompletos, registrarViagem, registrarViagemMotorista, atualizarServidor, atualizarMotorista, configurarEscalaAutomatica } from "./actions";
+// Olha a função atualizarDiasPlantao aqui no final da lista 👇
+import { getDadosCompletos, registrarViagem, registrarViagemMotorista, atualizarServidor, atualizarMotorista, configurarEscalaAutomatica, atualizarDiasPlantao } from "./actions";
 
 const formatarParaBR = (dataString: string | null) => {
   if (!dataString) return "";
@@ -47,7 +47,6 @@ export default function AdminPage() {
     }
   };
 
-  // --- NOVAS FUNÇÕES DE APAGAR E CORRIGIR DATAS ---
   const editDataViagemMotorista = async (id: number, atual: string) => {
     const dataAtualBR = formatarParaBR(atual);
     const nova = prompt("Corrigir data da viagem do MOTORISTA (DD/MM/AAAA):", dataAtualBR);
@@ -90,7 +89,6 @@ export default function AdminPage() {
     if (nova !== null) { await atualizarServidor(id, { data_folga: nova === "" ? null : nova }); carregar(); }
   };
 
-  // --- FUNÇÃO DE MOVER EQUIPA RESTAURADA ---
   const handleTrocarPlantao = async (id: number, atualId: number) => {
     const lista = plantoes.map(p => `${p.id}: ${p.nome}`).join("\n");
     const novoId = prompt(`Mover servidor para qual ID de equipa?\n\n${lista}`, atualId.toString());
@@ -252,7 +250,6 @@ export default function AdminPage() {
                               </div>
                               <div className="flex items-center gap-2 mt-2">
                                 {s.is_supervisor === 1 && <span className="text-[8px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded font-black uppercase tracking-widest inline-block">Supervisor</span>}
-                                {/* BOTÃO MOVER EQUIPA (DE VOLTA!) */}
                                 <button onClick={() => handleTrocarPlantao(s.id, plantao.id)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-0.5 rounded uppercase tracking-widest transition-colors flex items-center gap-1" title="Mover para outra equipa">
                                   🔄 Mover Equipa
                                 </button>
