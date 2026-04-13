@@ -95,7 +95,7 @@ export async function atualizarServidor(id: number, dados: any) {
   
   await client.execute({
     sql: `UPDATE servidores SET ${fields} WHERE id = ?`,
-    args: [...values, id] as any[] // <-- Correção exigida pela Vercel adicionada aqui
+    args: [...values, id] as any[]
   });
   return { success: true };
 }
@@ -106,7 +106,7 @@ export async function atualizarMotorista(id: number, dados: any) {
   
   await client.execute({
     sql: `UPDATE motoristas SET ${fields} WHERE id = ?`,
-    args: [...values, id] as any[] // <-- Correção exigida pela Vercel adicionada aqui
+    args: [...values, id] as any[]
   });
   return { success: true };
 }
@@ -132,5 +132,30 @@ export async function corrigirNumeracaoFilas() {
       await client.execute({ sql: "UPDATE servidores SET posicao_fila = ? WHERE id = ?", args: [i + 1, sRes.rows[i].id] as any[] });
     }
   }
+  return { success: true };
+}
+
+// --- NOVAS FUNÇÕES: ADICIONAR E REMOVER SERVIDOR ---
+export async function adicionarServidor(plantaoId: number, nome: string) {
+  const maxPosResult = await client.execute({
+    sql: "SELECT MAX(posicao_fila) as max_pos FROM servidores WHERE plantao_id = ?",
+    args: [plantaoId] as any[]
+  });
+  const maxPos = (maxPosResult.rows[0].max_pos as number) || 0;
+
+  await client.execute({
+    sql: "INSERT INTO servidores (nome, plantao_id, posicao_fila, is_supervisor) VALUES (?, ?, ?, 0)",
+    args: [nome, plantaoId, maxPos + 1] as any[]
+  });
+  return { success: true };
+}
+
+export async function removerServidor(id: number) {
+  await client.execute({
+    sql: "DELETE FROM servidores WHERE id = ?",
+    args: [id] as any[]
+  });
+  // Arruma a fila automaticamente para não deixar buraco!
+  await corrigirNumeracaoFilas();
   return { success: true };
 }

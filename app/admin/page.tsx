@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getDadosCompletos, registrarViagem, registrarViagemMotorista, atualizarServidor, atualizarMotorista, configurarEscalaAutomatica, atualizarDiasPlantao, corrigirNumeracaoFilas } from "../actions";
+import { getDadosCompletos, registrarViagem, registrarViagemMotorista, atualizarServidor, atualizarMotorista, configurarEscalaAutomatica, atualizarDiasPlantao, corrigirNumeracaoFilas, adicionarServidor, removerServidor } from "../actions";
 
 const formatarParaBR = (dataString: string | null) => {
   if (!dataString) return "";
@@ -46,11 +46,26 @@ export default function AdminPage() {
     }
   };
 
-  // NOVA FUNÇÃO DO BOTÃO REPARAR
   const handleRepararFilas = async () => {
     if (confirm("Isso vai reorganizar o 1º, 2º, 3º de todos os servidores e motoristas para fechar os buracos da numeração. Continuar?")) {
       await corrigirNumeracaoFilas();
       alert("✅ Numeração das filas reparada e organizada com sucesso!");
+      carregar();
+    }
+  };
+
+  // --- NOVOS CONTROLOS DE MEMBROS ---
+  const handleAdicionarMembro = async (plantaoId: number, plantaoNome: string) => {
+    const nome = prompt(`Digite o nome do NOVO EDUCADOR para a equipe ${plantaoNome}:`);
+    if (nome) {
+      await adicionarServidor(plantaoId, nome);
+      carregar();
+    }
+  };
+
+  const handleRemoverMembro = async (id: number, nome: string) => {
+    if (confirm(`⚠️ ATENÇÃO: Tem a certeza que deseja REMOVER o educador "${nome}" do sistema de vez?\n\nA fila será reorganizada automaticamente.`)) {
+      await removerServidor(id);
       carregar();
     }
   };
@@ -138,7 +153,6 @@ export default function AdminPage() {
             </h1>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-            {/* NOVO BOTÃO: REPARAR FILAS */}
             <button 
               onClick={handleRepararFilas}
               className="bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 px-5 py-3 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm"
@@ -218,16 +232,24 @@ export default function AdminPage() {
                     <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200 uppercase tracking-wide flex items-center gap-3">
                       {ePortaria ? '🚪' : '🛡️'} {plantao.nome}
                     </h2>
-                    {/* ID do Sistema escondido para não gerar confusão de números */}
                   </div>
                   
-                  <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-1 flex items-center">
-                    <span className="text-[10px] text-slate-500 uppercase font-black px-3">Escala:</span>
-                    <button onClick={() => {
-                      const dias = prompt("Novos dias de escala:", plantao.dias_plantao);
-                      if (dias) { atualizarDiasPlantao(plantao.id, dias); carregar(); }
-                    }} className="bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold px-4 py-2 rounded-lg text-xs transition-colors border border-slate-700/50">
-                      ✏️ {plantao.dias_plantao || 'A definir'}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-1 flex items-center">
+                      <span className="text-[10px] text-slate-500 uppercase font-black px-3">Escala:</span>
+                      <button onClick={() => {
+                        const dias = prompt("Novos dias de escala:", plantao.dias_plantao);
+                        if (dias) { atualizarDiasPlantao(plantao.id, dias); carregar(); }
+                      }} className="bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold px-4 py-2 rounded-lg text-xs transition-colors border border-slate-700/50">
+                        ✏️ {plantao.dias_plantao || 'A definir'}
+                      </button>
+                    </div>
+                    {/* NOVO BOTÃO: ADICIONAR MEMBRO */}
+                    <button 
+                      onClick={() => handleAdicionarMembro(plantao.id, plantao.nome)}
+                      className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-4 py-2.5 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all shadow-sm"
+                    >
+                      ➕ Add Membro
                     </button>
                   </div>
                 </div>
@@ -269,7 +291,11 @@ export default function AdminPage() {
                               <div className="flex items-center gap-2 mt-2">
                                 {s.is_supervisor === 1 && <span className="text-[8px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded font-black uppercase tracking-widest inline-block">Supervisor</span>}
                                 <button onClick={() => handleTrocarPlantao(s.id, plantao.id)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-0.5 rounded uppercase tracking-widest transition-colors flex items-center gap-1" title="Mover para outra equipa">
-                                  🔄 Mover Equipa
+                                  🔄 Mover
+                                </button>
+                                {/* NOVO BOTÃO: REMOVER MEMBRO */}
+                                <button onClick={() => handleRemoverMembro(s.id, s.nome)} className="text-[9px] bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/30 px-2 py-0.5 rounded uppercase tracking-widest transition-colors flex items-center gap-1" title="Apagar do sistema">
+                                  🗑️ Apagar
                                 </button>
                               </div>
                             </td>
