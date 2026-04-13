@@ -11,10 +11,11 @@ export async function getDadosCompletos() {
   const pRes = await client.execute("SELECT * FROM plantoes ORDER BY id");
   const sRes = await client.execute("SELECT * FROM servidores ORDER BY plantao_id, posicao_fila");
   
-  let motoristas = [];
+  // CORREÇÃO AQUI PARA A VERCEL: avisando que é um array (any[])
+  let motoristas: any[] = [];
   try {
     const mRes = await client.execute("SELECT * FROM motoristas ORDER BY posicao_fila");
-    motoristas = mRes.rows;
+    motoristas = mRes.rows as any[];
   } catch (e) {
     console.log("Tabela de motoristas não encontrada.");
   }
@@ -30,7 +31,9 @@ export async function getDadosCompletos() {
 
 export async function configurarEscalaAutomatica(plantaoId: number, mes: number, ano: number, tipo: 'par' | 'impar') {
   const ultimoDia = new Date(ano, mes, 0).getDate();
-  const diasArr = [];
+  
+  // CORREÇÃO PREVENTIVA AQUI: (string[])
+  const diasArr: string[] = [];
 
   for (let dia = 1; dia <= ultimoDia; dia++) {
     const ePar = dia % 2 === 0;
@@ -117,18 +120,15 @@ export async function atualizarDiasPlantao(id: number, novosDias: string) {
   return { success: true };
 }
 
-// NOVA FUNÇÃO: Repara as posições (1º, 2º, 3º) fechando os buracos se você apagou alguém
 export async function corrigirNumeracaoFilas() {
-  // 1. Arrumar Motoristas
   const mRes = await client.execute("SELECT id FROM motoristas ORDER BY posicao_fila ASC, id ASC");
   for (let i = 0; i < mRes.rows.length; i++) {
     await client.execute({ sql: "UPDATE motoristas SET posicao_fila = ? WHERE id = ?", args: [i + 1, mRes.rows[i].id] });
   }
 
-  // 2. Arrumar Servidores equipa por equipa
   const pRes = await client.execute("SELECT id FROM plantoes");
   for (const p of pRes.rows) {
-    const sRes = await client.execute({ sql: "SELECT id FROM servidores WHERE plantao_id = ? ORDER BY posicao_fila ASC, id ASC", args: [p.id] });
+    const sRes = await client.execute({ sql: "SELECT id FROM servidores WHERE plantao_id = ? ORDER BY posicao_fila ASC, id ASC", args: [p.id as number] });
     for (let i = 0; i < sRes.rows.length; i++) {
       await client.execute({ sql: "UPDATE servidores SET posicao_fila = ? WHERE id = ?", args: [i + 1, sRes.rows[i].id] });
     }
