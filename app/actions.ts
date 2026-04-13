@@ -40,84 +40,91 @@ export async function configurarEscalaAutomatica(plantaoId: number, mes: number,
 
   const diasString = diasArr.join(", ");
   
-  await client.execute({
-    sql: "UPDATE plantoes SET dias_plantao = ? WHERE id = ?",
-    args: [diasString, plantaoId]
-  });
+  await client.execute(
+    "UPDATE plantoes SET dias_plantao = ? WHERE id = ?",
+    [diasString, plantaoId]
+  );
 
   return { success: true, dias: diasString };
 }
 
 export async function registrarViagemMotorista(idViajou: number) {
   const hoje = new Date().toISOString().split('T')[0];
-  await client.execute({
-    sql: "UPDATE motoristas SET posicao_fila = 2, ultima_viagem = ? WHERE id = ?",
-    args: [hoje, idViajou]
-  });
-  await client.execute({
-    sql: "UPDATE motoristas SET posicao_fila = 1 WHERE id != ?",
-    args: [idViajou]
-  });
+
+  await client.execute(
+    "UPDATE motoristas SET posicao_fila = 2, ultima_viagem = ? WHERE id = ?",
+    [hoje, idViajou]
+  );
+
+  await client.execute(
+    "UPDATE motoristas SET posicao_fila = 1 WHERE id != ?",
+    [idViajou]
+  );
+
   return { success: true };
 }
 
 export async function registrarViagem(servidorId: number, plantaoId: number) {
-  const maxPosResult = await client.execute({
-    sql: "SELECT MAX(posicao_fila) as max_pos FROM servidores WHERE plantao_id = ?",
-    args: [plantaoId]
-  });
+  const maxPosResult = await client.execute(
+    "SELECT MAX(posicao_fila) as max_pos FROM servidores WHERE plantao_id = ?",
+    [plantaoId]
+  );
+
   const maxPos = (maxPosResult.rows[0].max_pos as number) || 1;
   const hoje = new Date().toISOString().split('T')[0];
 
-  await client.execute({
-    sql: "UPDATE servidores SET posicao_fila = ?, ultima_viagem = ? WHERE id = ?",
-    args: [maxPos + 1, hoje, servidorId]
-  });
+  await client.execute(
+    "UPDATE servidores SET posicao_fila = ?, ultima_viagem = ? WHERE id = ?",
+    [maxPos + 1, hoje, servidorId]
+  );
 
-  await client.execute({
-    sql: "UPDATE servidores SET posicao_fila = posicao_fila - 1 WHERE plantao_id = ? AND id != ?",
-    args: [plantaoId, servidorId]
-  });
+  await client.execute(
+    "UPDATE servidores SET posicao_fila = posicao_fila - 1 WHERE plantao_id = ? AND id != ?",
+    [plantaoId, servidorId]
+  );
+
   return { success: true };
 }
 
 export async function atualizarServidor(id: number, dados: any) {
   if (dados.plantao_id) {
-    const maxPosResult = await client.execute({
-      sql: "SELECT MAX(posicao_fila) as max_pos FROM servidores WHERE plantao_id = ?",
-      args: [dados.plantao_id]
-    });
+    const maxPosResult = await client.execute(
+      "SELECT MAX(posicao_fila) as max_pos FROM servidores WHERE plantao_id = ?",
+      [dados.plantao_id]
+    );
+
     const maxPos = (maxPosResult.rows[0].max_pos as number) || 0;
     dados.posicao_fila = maxPos + 1;
   }
+
   const fields = Object.keys(dados).map(key => `${key} = ?`).join(", ");
-  const values = Object.values(dados);
   const values = Object.values(dados) as any[];
 
-const values = Object.values(dados) as any[];
+  await client.execute(
+    `UPDATE servidores SET ${fields} WHERE id = ?`,
+    [...values, id]
+  );
 
-await client.execute(
-  `UPDATE servidores SET ${fields} WHERE id = ?`,
-  [...values, id]
-);
   return { success: true };
 }
 
-// FUNÇÃO ATUALIZADA: Agora aceita alterar tanto o nome quanto a data
 export async function atualizarMotorista(id: number, dados: any) {
   const fields = Object.keys(dados).map(key => `${key} = ?`).join(", ");
-  const values = Object.values(dados);
-  await client.execute({
-    sql: `UPDATE motoristas SET ${fields} WHERE id = ?`,
-    args: [...values, id]
-  });
+  const values = Object.values(dados) as any[];
+
+  await client.execute(
+    `UPDATE motoristas SET ${fields} WHERE id = ?`,
+    [...values, id]
+  );
+
   return { success: true };
 }
 
 export async function atualizarDiasPlantao(id: number, novosDias: string) {
-  await client.execute({
-    sql: "UPDATE plantoes SET dias_plantao = ? WHERE id = ?",
-    args: [novosDias, id]
-  });
+  await client.execute(
+    "UPDATE plantoes SET dias_plantao = ? WHERE id = ?",
+    [novosDias, id]
+  );
+
   return { success: true };
 }
