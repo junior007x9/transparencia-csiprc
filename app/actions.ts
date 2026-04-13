@@ -92,7 +92,11 @@ export async function atualizarServidor(id: number, dados: any) {
   }
   const fields = Object.keys(dados).map(key => `${key} = ?`).join(", ");
   const values = Object.values(dados);
-  await client.execute(
+  const values = Object.values(dados) as any[];
+
+const values = Object.values(dados) as any[];
+
+await client.execute(
   `UPDATE servidores SET ${fields} WHERE id = ?`,
   [...values, id]
 );
