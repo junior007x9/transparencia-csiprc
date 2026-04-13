@@ -11,7 +11,7 @@ export async function getDadosCompletos() {
   const pRes = await client.execute("SELECT * FROM plantoes ORDER BY id");
   const sRes = await client.execute("SELECT * FROM servidores ORDER BY plantao_id, posicao_fila");
   
-  let motoristas = [];
+  let motoristas: any[] = [];
   try {
     const mRes = await client.execute("SELECT * FROM motoristas ORDER BY posicao_fila");
     motoristas = mRes.rows;
