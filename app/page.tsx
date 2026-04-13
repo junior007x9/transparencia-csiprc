@@ -1,6 +1,6 @@
 import { getDadosCompletos } from "./actions";
 
-export const revalidate = 0; // Garante que a página carrega dados sempre atualizados
+export const revalidate = 0;
 
 const formatarParaBR = (dataString: string | null) => {
   if (!dataString) return "";
@@ -11,6 +11,21 @@ const formatarParaBR = (dataString: string | null) => {
 
 export default async function Home() {
   const { plantoes, motoristas } = await getDadosCompletos();
+
+  // --- LÓGICA INTELIGENTE: Pegar os últimos a viajar ---
+  // 1. Junta todos os servidores e motoristas numa única lista
+  const todosServidores = plantoes.flatMap((p: any) => 
+    p.servidores.map((s: any) => ({ ...s, papel: 'Servidor', equipa: p.nome }))
+  );
+  const todosMotoristas = motoristas.map((m: any) => 
+    ({ ...m, papel: 'Motorista', equipa: 'Revezamento' })
+  );
+  
+  // 2. Filtra quem já viajou, organiza da data mais nova para a mais velha, e pega os 4 primeiros
+  const ultimasViagens = [...todosServidores, ...todosMotoristas]
+    .filter(pessoa => pessoa.ultima_viagem) // Apenas quem tem data
+    .sort((a, b) => new Date(b.ultima_viagem).getTime() - new Date(a.ultima_viagem).getTime())
+    .slice(0, 4); // Mostra os 4 mais recentes
 
   return (
     <main className="min-h-screen bg-[#f8fafc] pb-16 font-sans relative overflow-hidden">
@@ -36,6 +51,30 @@ export default async function Home() {
 
       <div className="max-w-7xl mx-auto px-4 md:px-8 relative z-20 mt-[-4rem] space-y-10">
         
+        {/* NOVO: CARD DOS ÚLTIMOS QUE VIAJARAM */}
+        {ultimasViagens.length > 0 && (
+          <section className="bg-white/90 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-indigo-900/10 border border-white overflow-hidden transform transition duration-500 hover:shadow-indigo-900/20">
+            <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 p-5 text-white flex items-center justify-center gap-3">
+              <span className="text-2xl animate-bounce">⏱️</span>
+              <h3 className="font-black uppercase tracking-widest text-sm drop-shadow-md">Atividade Recente: Últimas Viagens</h3>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 p-2">
+              {ultimasViagens.map((pessoa: any, idx: number) => (
+                <div key={idx} className="p-5 flex flex-col items-center text-center hover:bg-slate-50 transition-colors rounded-2xl">
+                  <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
+                    {formatarParaBR(pessoa.ultima_viagem)}
+                  </span>
+                  <p className="font-black text-lg text-slate-800 leading-tight mb-1">{pessoa.nome}</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                    {pessoa.papel === 'Motorista' ? '🚗' : '🛡️'} {pessoa.equipa}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* ESCALA DE MOTORISTAS */}
         {motoristas && motoristas.length > 0 && (
           <section className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-xl shadow-amber-900/5 border border-white overflow-hidden transform transition duration-500 hover:shadow-2xl hover:bg-white">
