@@ -23,6 +23,11 @@ export default function AdminPage() {
   const [motoristas, setMotoristas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Variáveis pro Radar de Folgas
+  const hojeObj = new Date();
+  const diaHoje = hojeObj.getDate().toString().padStart(2, '0');
+  const diaHojeSimples = hojeObj.getDate().toString();
+
   const carregar = async () => {
     setLoading(true);
     const { plantoes, motoristas } = await getDadosCompletos();
@@ -208,15 +213,25 @@ export default function AdminPage() {
 
         {plantoes.map((plantao: any) => {
           const ePortaria = plantao.nome.toLowerCase().includes('portaria');
+          const diasEscala = plantao.dias_plantao || "";
+          const deServicoHoje = diasEscala.includes(diaHoje) || diasEscala.includes(diaHojeSimples);
+
           return (
             <div key={plantao.id} className="bg-slate-900/60 backdrop-blur-xl rounded-[2rem] border border-slate-800/80 overflow-hidden shadow-2xl mb-10">
               
               <div className="p-6 lg:p-8 bg-slate-800/20 flex flex-col md:flex-row md:justify-between md:items-center gap-5 border-b border-slate-800/80 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
-                <div>
+                <div className="flex flex-col items-start gap-2">
                   <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200 uppercase tracking-wide flex items-center gap-3">
                     {ePortaria ? '🚪' : '🛡️'} {plantao.nome}
                   </h2>
+                  
+                  {/* RADAR INTELIGENTE ADMIN */}
+                  {!ePortaria && (
+                    <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border shadow-sm ${deServicoHoje ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50' : 'bg-amber-500/20 text-amber-400 border-amber-500/50'}`}>
+                      {deServicoHoje ? '🟢 Equipe de Serviço Hoje' : '🌴 Equipe de Folga Hoje (Ideal p/ Viagem)'}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex flex-wrap items-center gap-3">
@@ -243,6 +258,7 @@ export default function AdminPage() {
                       <th className="p-5 lg:p-6">Nome do Servidor</th>
                       <th className="p-5 lg:p-6 text-center">Gestão de Folga</th>
                       {!ePortaria && <th className="p-5 lg:p-6 text-center">Data Última Viagem</th>}
+                      
                       {!ePortaria && (
                         <th className="p-5 lg:p-6 text-right pr-8">
                           {plantao.servidores.length >= 2 ? (
@@ -328,7 +344,6 @@ export default function AdminPage() {
                             </td>
                           )}
                           
-                          {/* AQUI ESTÁ O NOVO BOTÃO DE VIAGEM INDIVIDUAL */}
                           {!ePortaria && (
                             <td className="p-5 lg:p-6 text-right pr-8">
                               <button onClick={() => registrarViagem(s.id, plantao.id).then(carregar)} className="bg-emerald-900/40 hover:bg-emerald-600/60 border border-emerald-500/50 text-emerald-300 px-4 py-2.5 rounded-xl font-black uppercase text-[9px] tracking-widest transition-all shadow-sm hover:shadow-[0_0_15px_rgba(16,185,129,0.4)]" title="Registrar viagem APENAS para este servidor">

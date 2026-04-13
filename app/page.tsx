@@ -24,6 +24,11 @@ export default async function Home() {
     .sort((a, b) => new Date(b.ultima_viagem).getTime() - new Date(a.ultima_viagem).getTime())
     .slice(0, 4); 
 
+  // Variáveis para o Radar Inteligente
+  const hojeObj = new Date();
+  const diaHoje = hojeObj.getDate().toString().padStart(2, '0');
+  const diaHojeSimples = hojeObj.getDate().toString();
+
   return (
     <main className="min-h-screen bg-[#f8fafc] pb-16 font-sans relative overflow-hidden">
       
@@ -110,16 +115,27 @@ export default async function Home() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {plantoes.map((plantao: any) => {
             const ePortaria = plantao.nome.toLowerCase().includes('portaria');
+            const diasEscala = plantao.dias_plantao || "";
+            const deServicoHoje = diasEscala.includes(diaHoje) || diasEscala.includes(diaHojeSimples);
+
             return (
-              <div key={plantao.id} className="bg-white/90 backdrop-blur-lg rounded-[2rem] shadow-xl shadow-slate-200/50 overflow-hidden border border-white transform transition duration-500 hover:shadow-2xl hover:-translate-y-2 group">
+              <div key={plantao.id} className={`bg-white/90 backdrop-blur-lg rounded-[2rem] shadow-xl overflow-hidden border transform transition duration-500 hover:shadow-2xl hover:-translate-y-2 group ${deServicoHoje ? 'shadow-emerald-200/50 border-emerald-100' : 'shadow-slate-200/50 border-white'}`}>
                 
-                <div className={`p-7 text-white relative overflow-hidden ${ePortaria ? 'bg-gradient-to-br from-blue-600 to-blue-800' : 'bg-gradient-to-br from-slate-800 to-slate-950'}`}>
+                <div className={`p-7 text-white relative overflow-hidden ${ePortaria ? 'bg-gradient-to-br from-blue-600 to-blue-800' : (deServicoHoje ? 'bg-gradient-to-br from-emerald-800 to-slate-900' : 'bg-gradient-to-br from-slate-800 to-slate-950')}`}>
                   <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-5 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-                  <div className="relative z-10">
+                  <div className="relative z-10 flex flex-col items-start gap-2">
                     <h2 className="text-2xl font-black uppercase tracking-wide drop-shadow-lg flex items-center gap-3">
                       <span className="text-3xl">{ePortaria ? '🚪' : '🛡️'}</span> {plantao.nome}
                     </h2>
-                    <div className="inline-flex items-center gap-2 mt-3 bg-black/30 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-xl">
+                    
+                    {/* RADAR INTELIGENTE PUBLICO */}
+                    {!ePortaria && (
+                      <div className={`mt-1 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border shadow-sm ${deServicoHoje ? 'bg-emerald-500 text-white border-emerald-400' : 'bg-amber-500 text-white border-amber-400'}`}>
+                        {deServicoHoje ? '🟢 De Serviço Hoje' : '🌴 De Folga Hoje'}
+                      </div>
+                    )}
+
+                    <div className="inline-flex items-center gap-2 mt-2 bg-black/30 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-xl">
                       <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">📅 Escala:</span>
                       <span className="text-[11px] font-black text-white">{plantao.dias_plantao || 'A definir'}</span>
                     </div>
@@ -128,7 +144,6 @@ export default async function Home() {
                 
                 <ul className="divide-y divide-slate-100/80">
                   {plantao.servidores.map((s: any, idx: number) => {
-                    // AGORA ILUMINA OS 2 PRIMEIROS (A DUPLA!)
                     const proximo = (idx === 0 || idx === 1) && !ePortaria;
                     return (
                       <li key={s.id} className={`p-5 md:p-6 transition-all duration-300 ${proximo ? 'bg-gradient-to-r from-emerald-50/80 to-teal-50/30' : 'hover:bg-slate-50'}`}>
