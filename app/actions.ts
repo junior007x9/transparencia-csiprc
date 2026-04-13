@@ -92,10 +92,10 @@ export async function atualizarServidor(id: number, dados: any) {
   }
   const fields = Object.keys(dados).map(key => `${key} = ?`).join(", ");
   const values = Object.values(dados);
-  await client.execute({
-    sql: `UPDATE servidores SET ${fields} WHERE id = ?`,
-    args: [...values, id]
-  });
+  await client.execute(
+  `UPDATE servidores SET ${fields} WHERE id = ?`,
+  [...values, id]
+);
   return { success: true };
 }
 
