@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-// Olha a função atualizarDiasPlantao aqui adicionada no final da lista 👇
-import { getDadosCompletos, registrarViagem, registrarViagemMotorista, atualizarServidor, atualizarMotorista, configurarEscalaAutomatica, atualizarDiasPlantao } from "../actions";
+import { getDadosCompletos, registrarViagem, registrarViagemMotorista, atualizarServidor, atualizarMotorista, configurarEscalaAutomatica, atualizarDiasPlantao, corrigirNumeracaoFilas } from "../actions";
 
 const formatarParaBR = (dataString: string | null) => {
   if (!dataString) return "";
@@ -43,6 +42,15 @@ export default function AdminPage() {
     if (mes && ano && plantaoId) {
       const res = await configurarEscalaAutomatica(parseInt(plantaoId), parseInt(mes), parseInt(ano), tipo ? 'impar' : 'par');
       alert(`✅ Escala gerada com sucesso!\n\nDias definidos: ${res.dias}`);
+      carregar();
+    }
+  };
+
+  // NOVA FUNÇÃO DO BOTÃO REPARAR
+  const handleRepararFilas = async () => {
+    if (confirm("Isso vai reorganizar o 1º, 2º, 3º de todos os servidores e motoristas para fechar os buracos da numeração. Continuar?")) {
+      await corrigirNumeracaoFilas();
+      alert("✅ Numeração das filas reparada e organizada com sucesso!");
       carregar();
     }
   };
@@ -129,15 +137,25 @@ export default function AdminPage() {
               Central de Comando
             </h1>
           </div>
-          <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+            {/* NOVO BOTÃO: REPARAR FILAS */}
+            <button 
+              onClick={handleRepararFilas}
+              className="bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 px-5 py-3 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm"
+              title="Organiza os buracos do 1º, 2º, 3º"
+            >
+              🛠️ Reparar Numeração
+            </button>
+
             <button 
               onClick={handleConfiguracaoInteligente}
-              className="group relative px-6 py-3 font-black text-white rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-[0_0_20px_rgba(37,99,235,0.2)] hover:shadow-[0_0_25px_rgba(37,99,235,0.4)] transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider overflow-hidden"
+              className="group relative px-5 py-3 font-black text-white rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-[0_0_20px_rgba(37,99,235,0.2)] hover:shadow-[0_0_25px_rgba(37,99,235,0.4)] transition-all flex items-center justify-center gap-2 text-[11px] uppercase tracking-wider overflow-hidden"
             >
               <div className="absolute inset-0 bg-white/20 group-hover:translate-x-full transition-transform duration-500 -translate-x-full skew-x-12"></div>
               <span>⚡ Gerar Escala Mês</span>
             </button>
-            <button onClick={carregar} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2">
+            
+            <button onClick={carregar} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 px-5 py-3 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all flex items-center justify-center gap-2">
               ↻ Sincronizar
             </button>
           </div>
@@ -200,7 +218,7 @@ export default function AdminPage() {
                     <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200 uppercase tracking-wide flex items-center gap-3">
                       {ePortaria ? '🚪' : '🛡️'} {plantao.nome}
                     </h2>
-                    <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest mt-2 inline-block">ID Sistema: #{plantao.id}</span>
+                    {/* ID do Sistema escondido para não gerar confusão de números */}
                   </div>
                   
                   <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-1 flex items-center">
@@ -250,7 +268,6 @@ export default function AdminPage() {
                               </div>
                               <div className="flex items-center gap-2 mt-2">
                                 {s.is_supervisor === 1 && <span className="text-[8px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded font-black uppercase tracking-widest inline-block">Supervisor</span>}
-                                {/* BOTÃO MOVER EQUIPA */}
                                 <button onClick={() => handleTrocarPlantao(s.id, plantao.id)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-0.5 rounded uppercase tracking-widest transition-colors flex items-center gap-1" title="Mover para outra equipa">
                                   🔄 Mover Equipa
                                 </button>
