@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getDadosCompletos, registrarViagem, registrarViagemMotorista, atualizarServidor, atualizarMotorista, configurarEscalaAutomatica } from "../actions";
+// CORREÇÃO CRÍTICA PARA A VERCEL: mudou de "../actions" para "./actions"
+import { getDadosCompletos, registrarViagem, registrarViagemMotorista, atualizarServidor, atualizarMotorista, configurarEscalaAutomatica } from "./actions";
 
 const formatarParaBR = (dataString: string | null) => {
   if (!dataString) return "";
@@ -46,21 +47,36 @@ export default function AdminPage() {
     }
   };
 
+  // --- NOVAS FUNÇÕES DE APAGAR E CORRIGIR DATAS ---
   const editDataViagemMotorista = async (id: number, atual: string) => {
     const dataAtualBR = formatarParaBR(atual);
     const nova = prompt("Corrigir data da viagem do MOTORISTA (DD/MM/AAAA):", dataAtualBR);
-    if (nova) { 
-      await atualizarMotorista(id, { ultima_viagem: formatarParaDB(nova) }); 
+    if (nova !== null) { 
+      await atualizarMotorista(id, { ultima_viagem: nova === "" ? null : formatarParaDB(nova) }); 
       carregar(); 
+    }
+  };
+
+  const limparDataMotorista = async (id: number) => {
+    if (confirm("Tem certeza que deseja APAGAR a data da última viagem deste motorista?")) {
+      await atualizarMotorista(id, { ultima_viagem: null });
+      carregar();
     }
   };
 
   const editDataViagem = async (id: number, atual: string) => {
     const dataAtualBR = formatarParaBR(atual);
     const nova = prompt("Corrigir data da última viagem (DD/MM/AAAA):", dataAtualBR);
-    if (nova) { 
-      await atualizarServidor(id, { ultima_viagem: formatarParaDB(nova) }); 
+    if (nova !== null) { 
+      await atualizarServidor(id, { ultima_viagem: nova === "" ? null : formatarParaDB(nova) }); 
       carregar(); 
+    }
+  };
+
+  const limparDataServidor = async (id: number) => {
+    if (confirm("Tem certeza que deseja APAGAR a data da última viagem deste servidor?")) {
+      await atualizarServidor(id, { ultima_viagem: null });
+      carregar();
     }
   };
 
@@ -71,7 +87,18 @@ export default function AdminPage() {
 
   const handleEditFolga = async (id: number, atual: string) => {
     const nova = prompt("Corrigir data da folga (ex: 15/04):", atual || "");
-    if (nova !== null) { await atualizarServidor(id, { data_folga: nova }); carregar(); }
+    if (nova !== null) { await atualizarServidor(id, { data_folga: nova === "" ? null : nova }); carregar(); }
+  };
+
+  // --- FUNÇÃO DE MOVER EQUIPA RESTAURADA ---
+  const handleTrocarPlantao = async (id: number, atualId: number) => {
+    const lista = plantoes.map(p => `${p.id}: ${p.nome}`).join("\n");
+    const novoId = prompt(`Mover servidor para qual ID de equipa?\n\n${lista}`, atualId.toString());
+    
+    if (novoId && parseInt(novoId) !== atualId) {
+      await atualizarServidor(id, { plantao_id: parseInt(novoId) });
+      carregar();
+    }
   };
 
   if (loading) return (
@@ -136,14 +163,18 @@ export default function AdminPage() {
                         defaultValue={m.nome} 
                         onBlur={(e) => { atualizarMotorista(m.id, { nome: e.target.value }); carregar(); }} 
                       />
-                      <div className="flex items-center gap-3 mt-3">
-                        <p className="text-[11px] text-slate-300 uppercase font-bold flex items-center gap-1">
+                      <div className="flex flex-wrap items-center gap-2 mt-3">
+                        <p className="text-[11px] text-slate-300 uppercase font-bold flex items-center gap-1 mr-2">
                           ⏱️ Última: <span className="text-slate-400 font-normal">{m.ultima_viagem ? formatarParaBR(m.ultima_viagem) : 'Sem registo'}</span>
                         </p>
-                        {/* BOTÃO CORRIGIR DATA DO MOTORISTA */}
                         <button onClick={() => editDataViagemMotorista(m.id, m.ultima_viagem)} className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 px-2 py-1 rounded text-[9px] uppercase font-black transition-all shadow-sm">
                           ✏️ Corrigir
                         </button>
+                        {m.ultima_viagem && (
+                          <button onClick={() => limparDataMotorista(m.id)} className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-2 py-1 rounded text-[9px] uppercase font-black transition-all shadow-sm" title="Apagar data">
+                            🗑️ Apagar
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -215,12 +246,17 @@ export default function AdminPage() {
                                 <span className={`font-black text-[15px] block transition-colors ${proximo ? 'text-white' : 'text-slate-300'}`}>
                                   {s.nome}
                                 </span>
-                                {/* BOTÃO CORRIGIR NOME */}
                                 <button onClick={() => handleEditNome(s.id, s.nome)} className="text-slate-500 hover:text-emerald-400 transition-colors" title="Corrigir Nome">
                                   ✏️
                                 </button>
                               </div>
-                              {s.is_supervisor === 1 && <span className="text-[8px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded font-black uppercase tracking-widest mt-2 inline-block">Supervisor</span>}
+                              <div className="flex items-center gap-2 mt-2">
+                                {s.is_supervisor === 1 && <span className="text-[8px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded font-black uppercase tracking-widest inline-block">Supervisor</span>}
+                                {/* BOTÃO MOVER EQUIPA (DE VOLTA!) */}
+                                <button onClick={() => handleTrocarPlantao(s.id, plantao.id)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-0.5 rounded uppercase tracking-widest transition-colors flex items-center gap-1" title="Mover para outra equipa">
+                                  🔄 Mover Equipa
+                                </button>
+                              </div>
                             </td>
                             
                             <td className="p-5 lg:p-6 text-center">
@@ -228,10 +264,16 @@ export default function AdminPage() {
                                 <span className={`text-[11px] font-black ${s.data_folga ? "text-red-400" : "text-slate-500"}`}>
                                   🌴 {s.data_folga || 'Não definida'}
                                 </span>
-                                {/* BOTÃO CORRIGIR FOLGA */}
-                                <button onClick={() => handleEditFolga(s.id, s.data_folga)} className="bg-slate-800/80 hover:bg-slate-700 text-slate-400 border border-slate-700 px-3 py-1 rounded-lg text-[9px] uppercase tracking-widest transition-colors flex items-center gap-1">
-                                  ✏️ Corrigir
-                                </button>
+                                <div className="flex gap-1">
+                                  <button onClick={() => handleEditFolga(s.id, s.data_folga)} className="bg-slate-800/80 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1 rounded-lg text-[9px] uppercase tracking-widest transition-colors flex items-center gap-1">
+                                    ✏️ Corrigir
+                                  </button>
+                                  {s.data_folga && (
+                                    <button onClick={() => handleEditFolga(s.id, "")} className="bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/30 px-2 py-1 rounded-lg text-[9px] uppercase tracking-widest transition-colors" title="Apagar Folga">
+                                      🗑️
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             </td>
                             
@@ -241,10 +283,16 @@ export default function AdminPage() {
                                   <span className="text-[11px] font-bold text-slate-300">
                                     ⏱️ {s.ultima_viagem ? formatarParaBR(s.ultima_viagem) : 'Sem registo'}
                                   </span>
-                                  {/* BOTÃO CORRIGIR DATA DA VIAGEM */}
-                                  <button onClick={() => editDataViagem(s.id, s.ultima_viagem)} className="bg-slate-800/80 hover:bg-slate-700 text-slate-400 border border-slate-700 px-3 py-1 rounded-lg text-[9px] uppercase tracking-widest transition-colors flex items-center gap-1">
-                                    ✏️ Corrigir
-                                  </button>
+                                  <div className="flex gap-1">
+                                    <button onClick={() => editDataViagem(s.id, s.ultima_viagem)} className="bg-slate-800/80 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1 rounded-lg text-[9px] uppercase tracking-widest transition-colors flex items-center gap-1">
+                                      ✏️ Corrigir
+                                    </button>
+                                    {s.ultima_viagem && (
+                                      <button onClick={() => limparDataServidor(s.id)} className="bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/30 px-2 py-1 rounded-lg text-[9px] uppercase tracking-widest transition-colors" title="Apagar Data da Viagem">
+                                        🗑️
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               </td>
                             )}
