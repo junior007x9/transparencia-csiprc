@@ -29,10 +29,11 @@ export default function AdminPage() {
   const [modalRelatorio, setModalRelatorio] = useState(false);
   const [modalFolga, setModalFolga] = useState<any | null>(null);
 
-  // Novos campos do Modal
+  // Campos do Modal
   const [viagemData, setViagemData] = useState("");
   const [viagemAdolescente, setViagemAdolescente] = useState("");
   const [viagemCidade, setViagemCidade] = useState("");
+  const [viagemObservacoes, setViagemObservacoes] = useState("");
 
   const carregar = async () => {
     setLoading(true);
@@ -142,16 +143,17 @@ export default function AdminPage() {
     setViagemData(new Date().toISOString().split('T')[0]); // Seta a data de hoje por padrão
     setViagemAdolescente(""); // Limpa os campos
     setViagemCidade("");
+    setViagemObservacoes("");
   };
 
   const confirmarViagem = async (destino: string) => {
     if (!modalViagem) return;
     if (modalViagem.tipo === 'motorista') {
-      await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade);
+      await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes);
     } else if (modalViagem.tipo === 'dupla') {
-      await registrarViagemDupla(modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade);
+      await registrarViagemDupla(modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes);
     } else if (modalViagem.tipo === 'individual') {
-      await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade);
+      await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes);
     }
     setModalViagem(null); 
     carregar();
@@ -196,7 +198,7 @@ export default function AdminPage() {
             <h3 className="text-xl font-black text-white mb-2 uppercase tracking-wide">Registrar Viagem {modalViagem.nomeAlvo ? `- ${modalViagem.nomeAlvo}` : ''}</h3>
             <p className="text-slate-400 text-sm mb-4">Preencha os dados (pode escolher datas futuras para pré-aviso).</p>
             
-            <div className="flex flex-col gap-3 mb-5 text-left">
+            <div className="flex flex-col gap-3 mb-5 text-left max-h-[50vh] overflow-y-auto px-1">
               <div>
                 <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Data da Viagem / Pré-aviso</label>
                 <input 
@@ -226,9 +228,18 @@ export default function AdminPage() {
                   className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none" 
                 />
               </div>
+              <div>
+                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Observações (Opcional)</label>
+                <textarea 
+                  placeholder="Alguma informação extra ou nota..." 
+                  value={viagemObservacoes} 
+                  onChange={(e) => setViagemObservacoes(e.target.value)} 
+                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none min-h-[80px]" 
+                />
+              </div>
             </div>
 
-            <div className="flex flex-col gap-3 mb-6">
+            <div className="flex flex-col gap-3 mb-6 mt-2">
               <button onClick={() => confirmarViagem('Interior')} className="w-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/50 text-amber-400 py-4 rounded-xl font-black uppercase tracking-widest transition-all">📍 Interior <span className="text-xs ml-2 opacity-70">(R$ 320,00)</span></button>
               <button onClick={() => confirmarViagem('São Luís')} className="w-full bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 text-blue-400 py-4 rounded-xl font-black uppercase tracking-widest transition-all">📍 São Luís <span className="text-xs ml-2 opacity-70">(R$ 640,00)</span></button>
             </div>
@@ -254,7 +265,7 @@ export default function AdminPage() {
       {/* MODAL DO RELATÓRIO DE GASTOS */}
       {modalRelatorio && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-6xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-7xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
             <div className="bg-slate-950 p-6 flex justify-between items-center border-b border-slate-800">
               <h3 className="font-black text-xl text-white uppercase tracking-widest">📊 Dashboard Financeiro</h3>
               <button onClick={() => setModalRelatorio(false)} className="bg-slate-800 hover:bg-red-500 text-white p-2 rounded-xl transition-colors">✕</button>
@@ -285,6 +296,7 @@ export default function AdminPage() {
                     <th className="p-4">Nome</th>
                     <th className="p-4">Adolescente</th>
                     <th className="p-4">Cidade</th>
+                    <th className="p-4">Observações</th>
                     <th className="p-4">Equipa/Papel</th>
                     <th className="p-4">Destino (Região)</th>
                     <th className="p-4 text-right">Valor Pago</th>
@@ -298,6 +310,7 @@ export default function AdminPage() {
                       <td className="p-4 text-white font-bold">{r.nome_pessoa}</td>
                       <td className="p-4 text-slate-300">{r.adolescente || '-'}</td>
                       <td className="p-4 text-slate-300">{r.cidade || '-'}</td>
+                      <td className="p-4 text-slate-400 text-[10px] max-w-[120px] truncate" title={r.observacoes}>{r.observacoes || '-'}</td>
                       <td className="p-4 text-slate-500 text-xs">{r.equipe} ({r.papel})</td>
                       <td className="p-4"><span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${r.destino === 'Interior' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-blue-500/10 text-blue-400 border-blue-500/30'}`}>{r.destino}</span></td>
                       <td className="p-4 text-right font-black text-emerald-400">R$ {r.valor?.toFixed(2)}</td>
@@ -306,7 +319,7 @@ export default function AdminPage() {
                       </td>
                     </tr>
                   ))}
-                  {relatorio.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-slate-500">Nenhuma viagem registada no histórico.</td></tr>}
+                  {relatorio.length === 0 && <tr><td colSpan={9} className="p-8 text-center text-slate-500">Nenhuma viagem registada no histórico.</td></tr>}
                 </tbody>
               </table>
             </div>
