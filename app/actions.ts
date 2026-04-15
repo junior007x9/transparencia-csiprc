@@ -58,7 +58,6 @@ export async function reordenarFila(tabela: 'servidores' | 'motoristas', idsOrde
 }
 
 async function salvarNoHistorico(nome: string, papel: string, equipe: string, data: string, destino: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
-  // ATUALIZADO: Gestão custa 0
   const valor = destino === 'Interior' ? 320.00 : destino === 'São Luís' ? 640.00 : 0.00;
   await client.execute({
     sql: "INSERT INTO viagens_realizadas (nome_pessoa, papel, equipe, data_viagem, destino, valor, adolescente, cidade, observacoes, horario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -66,21 +65,35 @@ async function salvarNoHistorico(nome: string, papel: string, equipe: string, da
   });
 }
 
+// LOGICA DE FILA CORRIGIDA PARA MOTORISTAS
 export async function registrarViagemMotorista(idViajou: number, destino: string, dataViagem?: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
   try {
     const dataDb = dataViagem || new Date().toISOString().split('T')[0];
-    const mRes = await client.execute({ sql: "SELECT nome FROM motoristas WHERE id = ?", args: [idViajou] as any[] });
+    const mRes = await client.execute({ sql: "SELECT nome, posicao_fila FROM motoristas WHERE id = ?", args: [idViajou] as any[] });
     
-    if (mRes.rows.length > 0) await salvarNoHistorico(mRes.rows[0].nome as string, 'Motorista', 'Revezamento', dataDb, destino, adolescente, cidade, observacoes, horario);
+    if (mRes.rows.length === 0) return { success: false, error: "Motorista não encontrado." };
+    
+    const nome = mRes.rows[0].nome as string;
+    const posAtual = mRes.rows[0].posicao_fila as number;
 
-    await client.execute({ sql: "UPDATE motoristas SET posicao_fila = 2, ultima_viagem = ?, destino_viagem = ? WHERE id = ?", args: [dataDb, destino, idViajou] as any[] });
-    await client.execute({ sql: "UPDATE motoristas SET posicao_fila = 1 WHERE id != ?", args: [idViajou] as any[] });
+    await salvarNoHistorico(nome, 'Motorista', 'Revezamento', dataDb, destino, adolescente, cidade, observacoes, horario);
+
+    const maxPosResult = await client.execute("SELECT MAX(posicao_fila) as max_pos FROM motoristas");
+    const maxPos = (maxPosResult.rows[0].max_pos as number) || 1;
+
+    // Reduz 1 posição de quem estava atrás do motorista que viajou
+    await client.execute({ sql: "UPDATE motoristas SET posicao_fila = posicao_fila - 1 WHERE posicao_fila > ?", args: [posAtual] as any[] });
+    
+    // Joga o motorista que viajou para a última posição
+    await client.execute({ sql: "UPDATE motoristas SET posicao_fila = ?, ultima_viagem = ?, destino_viagem = ? WHERE id = ?", args: [maxPos, dataDb, destino, idViajou] as any[] });
+
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
 }
 
+// LOGICA DE FILA CORRIGIDA PARA DUPLAS
 export async function registrarViagemDupla(plantaoId: number, destino: string, dataViagem?: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
   try {
     const dataDb = dataViagem || new Date().toISOString().split('T')[0];
@@ -96,16 +109,20 @@ export async function registrarViagemDupla(plantaoId: number, destino: string, d
        return { success: true };
     }
 
-    const s1 = servidores[0], s2 = servidores[1], total = servidores.length;
+    const s1 = servidores[0];
+    const s2 = servidores[1];
+    const total = servidores.length;
+    
     await salvarNoHistorico(s1.nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes, horario);
     await salvarNoHistorico(s2.nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes, horario);
 
+    // Reduz em 2 posições a fila de todos os que estão atrás da dupla (da posição 3 em diante)
+    await client.execute({ sql: "UPDATE servidores SET posicao_fila = posicao_fila - 2 WHERE plantao_id = ? AND posicao_fila > 2", args: [plantaoId] as any[] });
+
+    // Coloca a dupla nas duas últimas posições exatas (total - 1 e total)
     await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, destino_viagem = ?, posicao_fila = ? WHERE id = ?", args: [dataDb, destino, total - 1, s1.id] as any[] });
     await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, destino_viagem = ?, posicao_fila = ? WHERE id = ?", args: [dataDb, destino, total, s2.id] as any[] });
 
-    for (let i = 2; i < total; i++) {
-       await client.execute({ sql: "UPDATE servidores SET posicao_fila = ? WHERE id = ?", args: [i - 1, servidores[i].id] as any[] });
-    }
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };

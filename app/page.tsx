@@ -20,7 +20,6 @@ export default function Home() {
   const [modalHistorico, setModalHistorico] = useState<any | null>(null);
   const [modalHistoricoGeral, setModalHistoricoGeral] = useState(false);
 
-  // NOVOS ESTADOS PARA OS FILTROS
   const [filtroNome, setFiltroNome] = useState("");
   const [filtroData, setFiltroData] = useState("");
 
@@ -45,26 +44,20 @@ export default function Home() {
     );
   }
 
-  const hojeIso = new Date().toISOString().split('T')[0];
-  const viagensHoje = relatorioGeral
-    .filter(viagem => viagem.data_viagem === hojeIso)
-    .slice(0, 3); 
+  // ATUALIZADO: Mostra sempre as últimas 3 viagens registadas, não importa a data
+  const ultimasViagens = relatorioGeral.slice(0, 3); 
 
   const hojeObj = new Date();
   const diaHoje = hojeObj.getDate().toString().padStart(2, '0');
   const diaHojeSimples = hojeObj.getDate().toString();
 
-  // LÓGICA DE FILTRAGEM DO HISTÓRICO
   const relatorioFiltrado = relatorioGeral.filter(viagem => {
     const termoBusca = filtroNome.toLowerCase();
-    
-    // Verifica se o texto digitado bate com o nome do servidor, adolescente ou equipe
     const matchNome = termoBusca === "" || 
       (viagem.nome_pessoa && viagem.nome_pessoa.toLowerCase().includes(termoBusca)) ||
       (viagem.adolescente && viagem.adolescente.toLowerCase().includes(termoBusca)) ||
       (viagem.equipe && viagem.equipe.toLowerCase().includes(termoBusca));
 
-    // Verifica se a data selecionada bate com a data da viagem
     const matchData = filtroData === "" || viagem.data_viagem === filtroData;
 
     return matchNome && matchData;
@@ -87,7 +80,6 @@ export default function Home() {
               </button>
             </div>
             
-            {/* ÁREA DE FILTROS */}
             <div className="bg-slate-50 p-4 border-b border-slate-200 flex flex-col sm:flex-row gap-3 shadow-inner">
               <div className="flex-1">
                 <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Buscar por Nome / Equipa / Adolescente</label>
@@ -246,18 +238,19 @@ export default function Home() {
             </button>
           </div>
 
-          {viagensHoje.length > 0 && (
+          {/* ATUALIZADO: TELA DE PREVISÃO AGORA MOSTRA AS 3 ÚLTIMAS SEMPRE */}
+          {ultimasViagens.length > 0 && (
             <div className="bg-white/90 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-indigo-900/10 border border-white overflow-hidden transform transition duration-500 hover:shadow-indigo-900/20">
               <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 p-5 text-white flex items-center justify-center gap-3">
                 <span className="text-3xl animate-bounce">✈️</span>
-                <h3 className="font-black uppercase tracking-widest text-sm drop-shadow-md">Última Viagem Registrada</h3>
+                <h3 className="font-black uppercase tracking-widest text-sm drop-shadow-md">Últimas Viagens Registadas</h3>
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 p-2">
-                {viagensHoje.map((viagem: any, idx: number) => (
+                {ultimasViagens.map((viagem: any, idx: number) => (
                   <div key={idx} className="p-5 flex flex-col items-center text-center hover:bg-slate-50 transition-colors rounded-2xl">
-                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
-                      Viajou Hoje
+                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 flex items-center gap-1.5">
+                      📅 {formatarParaBR(viagem.data_viagem)}
                     </span>
                     <p className="font-black text-lg text-slate-800 leading-tight mb-1">{viagem.nome_pessoa}</p>
                     <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
