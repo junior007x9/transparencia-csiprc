@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getDadosCompletos, registrarViagem, registrarViagemDupla, registrarViagemMotorista, atualizarServidor, atualizarMotorista, configurarEscalaAutomatica, atualizarDiasPlantao, corrigirNumeracaoFilas, adicionarServidor, removerServidor, zerarHistoricoViagens } from "../actions";
+import { 
+  getDadosCompletos, registrarViagem, registrarViagemDupla, registrarViagemMotorista, 
+  atualizarServidor, atualizarMotorista, configurarEscalaAutomatica, atualizarDiasPlantao, 
+  corrigirNumeracaoFilas, adicionarServidor, removerServidor, zerarHistoricoViagens, 
+  getRelatorioViagens, excluirViagemHistorico, verificarSenhaAdmin, reordenarFila 
+} from "../actions";
 
 const formatarParaBR = (dataString: string | null) => {
   if (!dataString) return "";
@@ -10,20 +15,20 @@ const formatarParaBR = (dataString: string | null) => {
   return `${dia}/${mes}/${ano}`;
 };
 
-const formatarParaDB = (dataBR: string) => {
-  if (!dataBR) return "";
-  if (dataBR.includes("-")) return dataBR; 
-  const partes = dataBR.split("/");
-  if (partes.length === 3) return `${partes[2]}-${partes[1]}-${partes[0]}`;
-  return dataBR;
-};
-
 export default function AdminPage() {
+  const [autenticado, setAutenticado] = useState(false);
+  const [senhaInput, setSenhaInput] = useState("");
+  const [loginError, setLoginError] = useState("");
+
   const [plantoes, setPlantoes] = useState<any[]>([]);
   const [motoristas, setMotoristas] = useState<any[]>([]);
+  const [relatorio, setRelatorio] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Variáveis pro Radar de Folgas
+  const [modalViagem, setModalViagem] = useState<any | null>(null);
+  const [modalRelatorio, setModalRelatorio] = useState(false);
+  const [modalFolga, setModalFolga] = useState<any | null>(null);
+
   const hojeObj = new Date();
   const diaHoje = hojeObj.getDate().toString().padStart(2, '0');
   const diaHojeSimples = hojeObj.getDate().toString();
@@ -31,143 +36,254 @@ export default function AdminPage() {
   const carregar = async () => {
     setLoading(true);
     const { plantoes, motoristas } = await getDadosCompletos();
+    const rel = await getRelatorioViagens();
     setPlantoes(plantoes);
     setMotoristas(motoristas);
+    setRelatorio(rel);
     setLoading(false);
   };
 
-  useEffect(() => { carregar(); }, []);
+  useEffect(() => { if (autenticado) carregar(); }, [autenticado]);
 
-  const handleConfiguracaoInteligente = async () => {
-    const mes = prompt("Qual o número do MÊS? (ex: 4 para Abril)");
-    const ano = prompt("Qual o ANO? (ex: 2026)");
-    const plantaoId = prompt(`Para qual plantão aplicar?\n\n${plantoes.map(p => `${p.id}: ${p.nome}`).join("\n")}`);
-    const tipo = confirm("Deseja aplicar dias ÍMPARES? (Clique OK para ÍMPARES, Cancelar para PARES)");
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const isValid = await verificarSenhaAdmin(senhaInput);
+    if (isValid) {
+      setAutenticado(true);
+      setLoginError("");
+    } else {
+      setLoginError("Senha incorreta! Tente novamente.");
+    }
+  };
 
-    if (mes && ano && plantaoId) {
-      const res = await configurarEscalaAutomatica(parseInt(plantaoId), parseInt(mes), parseInt(ano), tipo ? 'impar' : 'par');
-      alert(`✅ Escala gerada com sucesso!\n\nDias definidos: ${res.dias}`);
+  if (!autenticado) {
+    return (
+      <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4">
+        <form onSubmit={handleLogin} className="bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center transform transition-all hover:scale-105">
+          <div className="text-5xl mb-4 animate-bounce">🔐</div>
+          <h1 className="text-2xl font-black text-white mb-2 uppercase tracking-widest">Acesso Restrito</h1>
+          <p className="text-slate-500 text-xs mb-6 uppercase tracking-widest">Central de Gestão CSIPRC</p>
+          <input 
+            type="password" 
+            placeholder="Digite a senha" 
+            className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-4 rounded-xl mb-3 text-center focus:border-emerald-500 focus:outline-none tracking-widest"
+            value={senhaInput}
+            onChange={(e) => setSenhaInput(e.target.value)}
+          />
+          {loginError && <p className="text-red-400 text-xs font-bold mb-4 animate-pulse">{loginError}</p>}
+          <button type="submit" className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black uppercase tracking-widest py-4 rounded-xl transition-all shadow-lg shadow-emerald-900/50">
+            Entrar no Sistema
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  // --- LÓGICA DE ARRASTAR E SOLTAR ---
+  const onDragStart = (e: any, index: number, itemType: string, groupId: number | string) => {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("itemIndex", index);
+    e.dataTransfer.setData("itemType", itemType);
+    e.dataTransfer.setData("groupId", groupId);
+    e.target.style.opacity = "0.4";
+  };
+  const onDragEnd = (e: any) => { e.target.style.opacity = "1"; };
+  const onDragOver = (e: any) => { e.preventDefault(); e.currentTarget.classList.add('bg-slate-800/80'); };
+  const onDragLeave = (e: any) => { e.currentTarget.classList.remove('bg-slate-800/80'); };
+  const onDrop = async (e: any, dropIndex: number, itemType: string, groupId: number | string) => {
+    e.preventDefault();
+    e.currentTarget.classList.remove('bg-slate-800/80');
+    const dragIndex = Number(e.dataTransfer.getData("itemIndex"));
+    const draggedType = e.dataTransfer.getData("itemType");
+    const draggedGroup = e.dataTransfer.getData("groupId");
+
+    if (draggedType !== itemType || draggedGroup !== String(groupId) || dragIndex === dropIndex) return;
+
+    if (itemType === 'motorista') {
+      const newList = [...motoristas];
+      const [removed] = newList.splice(dragIndex, 1);
+      newList.splice(dropIndex, 0, removed);
+      setMotoristas(newList);
+      await reordenarFila('motoristas', newList.map(m => m.id));
+    } else {
+      const plantoesCopia = [...plantoes];
+      const pIndex = plantoesCopia.findIndex(p => p.id === groupId);
+      const newList = [...plantoesCopia[pIndex].servidores];
+      const [removed] = newList.splice(dragIndex, 1);
+      newList.splice(dropIndex, 0, removed);
+      plantoesCopia[pIndex].servidores = newList;
+      setPlantoes(plantoesCopia);
+      await reordenarFila('servidores', newList.map(s => s.id));
+    }
+    carregar();
+  };
+
+  // --- INTEGRAÇÃO COM WHATSAPP ---
+  const handleEditTelefone = async (id: number, tipo: 'servidor' | 'motorista', atual: string, nome: string) => {
+    const novo = prompt(`Digite o número de WhatsApp de ${nome} (Apenas números com DDD, ex: 99988887777):`, atual || "");
+    if (novo !== null) {
+      if (tipo === 'servidor') await atualizarServidor(id, { telefone: novo });
+      else await atualizarMotorista(id, { telefone: novo });
       carregar();
     }
   };
 
-  const handleRepararFilas = async () => {
-    if (confirm("Isso vai reorganizar o 1º, 2º, 3º de todos os servidores e motoristas para fechar os buracos da numeração. Continuar?")) {
-      await corrigirNumeracaoFilas();
-      alert("✅ Numeração das filas reparada com sucesso!");
-      carregar();
-    }
+  const abrirWhatsApp = (telefone: string, nome: string) => {
+    const numeroLimpo = telefone.replace(/\D/g, ''); // Remove tudo que não for número
+    const mensagem = `Olá ${nome}, a sua viagem pelo CSIPRC foi confirmada! Por favor, esteja pronto. 🚀`;
+    const url = `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(mensagem)}`;
+    window.open(url, '_blank');
   };
 
-  const handleZerarHistorico = async () => {
-    if (confirm("⚠️ ATENÇÃO EXTREMA: Isso vai apagar a data de última viagem de TODOS os motoristas e educadores do sistema para começar um novo ciclo. Tem certeza absoluta?")) {
-      await zerarHistoricoViagens();
-      alert("✅ Histórico de viagens completamente zerado!");
-      carregar();
-    }
+  // --- OUTRAS FUNÇÕES ---
+  const abrirModalViagem = (tipo: string, id: number, plantaoId?: number, nomeAlvo?: string) => { setModalViagem({ tipo, id, plantaoId, nomeAlvo }); };
+  const confirmarViagem = async (destino: string) => {
+    if (!modalViagem) return;
+    if (modalViagem.tipo === 'motorista') await registrarViagemMotorista(modalViagem.id, destino);
+    else if (modalViagem.tipo === 'dupla') await registrarViagemDupla(modalViagem.plantaoId!, destino);
+    else if (modalViagem.tipo === 'individual') await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino);
+    setModalViagem(null); carregar();
   };
 
-  const handleAdicionarMembro = async (plantaoId: number, plantaoNome: string) => {
-    const nome = prompt(`Digite o nome do NOVO EDUCADOR para a equipe ${plantaoNome}:`);
-    if (nome) { await adicionarServidor(plantaoId, nome); carregar(); }
+  const handleExcluirRelatorio = async (id: number) => {
+    if (confirm("Deseja APAGAR este registo permanentemente do histórico financeiro?")) { await excluirViagemHistorico(id); carregar(); }
   };
 
-  const handleRemoverMembro = async (id: number, nome: string) => {
-    if (confirm(`⚠️ Tem a certeza que deseja REMOVER o educador "${nome}" do sistema de vez?`)) {
-      await removerServidor(id);
-      carregar();
-    }
+  const salvarNovaFolga = async () => {
+    if (!modalFolga || !modalFolga.data) return;
+    const [ano, mes, dia] = modalFolga.data.split('-');
+    await atualizarServidor(modalFolga.id, { data_folga: `${dia}/${mes}` });
+    setModalFolga(null); carregar();
   };
 
-  const editDataViagemMotorista = async (id: number, atual: string) => {
-    const dataAtualBR = formatarParaBR(atual);
-    const nova = prompt("Corrigir data da viagem do MOTORISTA (DD/MM/AAAA):", dataAtualBR);
-    if (nova !== null) { await atualizarMotorista(id, { ultima_viagem: nova === "" ? null : formatarParaDB(nova) }); carregar(); }
-  };
-
-  const limparDataMotorista = async (id: number) => {
-    if (confirm("Tem certeza que deseja APAGAR a data da última viagem deste motorista?")) {
-      await atualizarMotorista(id, { ultima_viagem: null });
-      carregar();
-    }
-  };
-
-  const editDataViagem = async (id: number, atual: string) => {
-    const dataAtualBR = formatarParaBR(atual);
-    const nova = prompt("Corrigir data da última viagem (DD/MM/AAAA):", dataAtualBR);
-    if (nova !== null) { await atualizarServidor(id, { ultima_viagem: nova === "" ? null : formatarParaDB(nova) }); carregar(); }
-  };
-
-  const limparDataServidor = async (id: number) => {
-    if (confirm("Tem certeza que deseja APAGAR a data da última viagem deste servidor?")) {
-      await atualizarServidor(id, { ultima_viagem: null });
-      carregar();
-    }
-  };
-
-  const handleEditNome = async (id: number, atual: string) => {
-    const novo = prompt("Corrigir nome do servidor:", atual);
-    if (novo) { await atualizarServidor(id, { nome: novo }); carregar(); }
-  };
-
-  const handleEditFolga = async (id: number, atual: string) => {
-    const nova = prompt("Corrigir data da folga (ex: 15/04):", atual || "");
-    if (nova !== null) { await atualizarServidor(id, { data_folga: nova === "" ? null : nova }); carregar(); }
-  };
-
+  const limparFolga = async (id: number) => { await atualizarServidor(id, { data_folga: null }); carregar(); };
+  const handleZerarHistorico = async () => { if (confirm("⚠️ Isso apaga a fila inteira. Certeza?")) { await zerarHistoricoViagens(); carregar(); } };
+  const handleRepararFilas = async () => { await corrigirNumeracaoFilas(); alert("✅ Fila Reparada!"); carregar(); };
+  const handleAdicionarMembro = async (plantaoId: number, plantaoNome: string) => { const nome = prompt(`NOVO EDUCADOR para a equipa ${plantaoNome}:`); if (nome) { await adicionarServidor(plantaoId, nome); carregar(); } };
+  const handleRemoverMembro = async (id: number, nome: string) => { if (confirm(`⚠️ REMOVER "${nome}"?`)) { await removerServidor(id); carregar(); } };
   const handleTrocarPlantao = async (id: number, atualId: number) => {
     const lista = plantoes.map(p => `${p.id}: ${p.nome}`).join("\n");
-    const novoId = prompt(`Mover servidor para qual ID de equipa?\n\n${lista}`, atualId.toString());
+    const novoId = prompt(`ID da nova equipa:\n\n${lista}`, atualId.toString());
     if (novoId && parseInt(novoId) !== atualId) { await atualizarServidor(id, { plantao_id: parseInt(novoId) }); carregar(); }
   };
 
-  if (loading) return (
-    <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center text-white relative overflow-hidden">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-emerald-500/10 rounded-full blur-[100px]"></div>
-      <div className="w-16 h-16 border-4 border-slate-800 border-t-emerald-500 rounded-full animate-spin mb-6 relative z-10 shadow-[0_0_30px_rgba(16,185,129,0.3)]"></div>
-      <p className="font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200 uppercase tracking-[0.3em] text-xs relative z-10 animate-pulse">Sincronizando Central</p>
-    </div>
-  );
+  if (loading) return <div className="min-h-screen bg-[#020617] flex justify-center items-center"><div className="w-16 h-16 border-4 border-slate-800 border-t-emerald-500 rounded-full animate-spin"></div></div>;
+
+  // DADOS DO DASHBOARD
+  const totalGasto = relatorio.reduce((acc, r) => acc + (r.valor || 0), 0);
+  const qtdInterior = relatorio.filter(r => r.destino === 'Interior').length;
+  const qtdSLZ = relatorio.filter(r => r.destino === 'São Luís').length;
 
   return (
-    <main className="min-h-screen bg-[#020617] text-slate-300 p-4 md:p-8 font-sans pb-24 relative selection:bg-emerald-500/30 selection:text-emerald-200">
+    <main className="min-h-screen bg-[#020617] text-slate-300 p-4 md:p-8 font-sans pb-24 relative">
       
-      <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-emerald-900/10 rounded-full blur-[120px]"></div>
-        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-blue-900/10 rounded-full blur-[120px]"></div>
-      </div>
+      {/* MODAL DE VIAGEM */}
+      {modalViagem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl p-6 text-center">
+            <h3 className="text-xl font-black text-white mb-2 uppercase tracking-wide">Registrar Viagem {modalViagem.nomeAlvo ? `- ${modalViagem.nomeAlvo}` : ''}</h3>
+            <p className="text-slate-400 text-sm mb-6">Selecione o destino para registar na escala e no relatório financeiro.</p>
+            <div className="flex flex-col gap-3 mb-6">
+              <button onClick={() => confirmarViagem('Interior')} className="w-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/50 text-amber-400 py-4 rounded-xl font-black uppercase tracking-widest transition-all">📍 Interior <span className="text-xs ml-2 opacity-70">(R$ 320,00)</span></button>
+              <button onClick={() => confirmarViagem('São Luís')} className="w-full bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 text-blue-400 py-4 rounded-xl font-black uppercase tracking-widest transition-all">📍 São Luís <span className="text-xs ml-2 opacity-70">(R$ 640,00)</span></button>
+            </div>
+            <button onClick={() => setModalViagem(null)} className="text-slate-500 hover:text-white uppercase font-bold text-xs tracking-widest">Cancelar</button>
+          </div>
+        </div>
+      )}
 
+      {/* MODAL DE FOLGA */}
+      {modalFolga && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm shadow-2xl p-6 text-center">
+            <h3 className="text-xl font-black text-white mb-4 uppercase tracking-wide">📅 Selecionar Folga</h3>
+            <input type="date" className="w-full bg-slate-800 border border-slate-600 text-white p-3 rounded-xl mb-6" value={modalFolga.data || ""} onChange={(e) => setModalFolga({...modalFolga, data: e.target.value})} />
+            <div className="flex gap-3">
+              <button onClick={() => setModalFolga(null)} className="flex-1 bg-slate-800 text-slate-300 py-3 rounded-xl font-bold text-xs uppercase tracking-widest">Cancelar</button>
+              <button onClick={salvarNovaFolga} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black text-xs uppercase tracking-widest">Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DO RELATÓRIO DE GASTOS */}
+      {modalRelatorio && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-5xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
+            <div className="bg-slate-950 p-6 flex justify-between items-center border-b border-slate-800">
+              <h3 className="font-black text-xl text-white uppercase tracking-widest">📊 Dashboard Financeiro</h3>
+              <button onClick={() => setModalRelatorio(false)} className="bg-slate-800 hover:bg-red-500 text-white p-2 rounded-xl transition-colors">✕</button>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-6 bg-slate-900 border-b border-slate-800">
+              <div className="bg-emerald-900/20 border border-emerald-500/30 p-4 rounded-2xl flex flex-col justify-center text-center">
+                <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Gasto Total Global</span>
+                <span className="text-3xl font-black text-emerald-400">R$ {totalGasto.toFixed(2)}</span>
+              </div>
+              <div className="bg-amber-900/20 border border-amber-500/30 p-4 rounded-2xl flex flex-col justify-center text-center">
+                <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Viagens Interior</span>
+                <span className="text-3xl font-black text-amber-400">{qtdInterior} <span className="text-sm">viagens</span></span>
+                <span className="text-xs text-amber-500/70 mt-1">Gasto: R$ {(qtdInterior * 320).toFixed(2)}</span>
+              </div>
+              <div className="bg-blue-900/20 border border-blue-500/30 p-4 rounded-2xl flex flex-col justify-center text-center">
+                <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Viagens São Luís</span>
+                <span className="text-3xl font-black text-blue-400">{qtdSLZ} <span className="text-sm">viagens</span></span>
+                <span className="text-xs text-blue-500/70 mt-1">Gasto: R$ {(qtdSLZ * 640).toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead>
+                  <tr className="text-slate-500 border-b border-slate-800 uppercase font-black text-[10px] tracking-widest">
+                    <th className="p-4">Data</th>
+                    <th className="p-4">Nome</th>
+                    <th className="p-4">Equipa/Papel</th>
+                    <th className="p-4">Destino</th>
+                    <th className="p-4 text-right">Valor Pago</th>
+                    <th className="p-4 text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/40">
+                  {relatorio.map((r, i) => (
+                    <tr key={r.id} className="hover:bg-slate-800/50 transition-colors">
+                      <td className="p-4 text-slate-400">{formatarParaBR(r.data_viagem)}</td>
+                      <td className="p-4 text-white font-bold">{r.nome_pessoa}</td>
+                      <td className="p-4 text-slate-500 text-xs">{r.equipe} ({r.papel})</td>
+                      <td className="p-4"><span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${r.destino === 'Interior' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-blue-500/10 text-blue-400 border-blue-500/30'}`}>{r.destino}</span></td>
+                      <td className="p-4 text-right font-black text-emerald-400">R$ {r.valor?.toFixed(2)}</td>
+                      <td className="p-4 text-center">
+                        <button onClick={() => handleExcluirRelatorio(r.id)} className="bg-red-900/30 hover:bg-red-600 text-red-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" title="Apagar erro">🗑️ Excluir</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {relatorio.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-500">Nenhuma viagem registada no histórico.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CABEÇALHO */}
       <div className="max-w-7xl mx-auto relative z-10">
         <header className="flex flex-col md:flex-row md:justify-between md:items-end gap-6 mb-12 border-b border-slate-800/80 pb-6">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <span className="flex h-3 w-3 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-40"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,1)]"></span>
-              </span>
-              <span className="text-[10px] text-emerald-400 font-black uppercase tracking-widest border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 rounded">Sistema Online</span>
+              <span className="flex h-3 w-3 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-40"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
+              <span className="text-[10px] text-emerald-400 font-black uppercase tracking-widest border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 rounded">Acesso Seguro</span>
             </div>
-            <h1 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tighter drop-shadow-md">
-              Central de Comando
-            </h1>
+            <h1 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tighter drop-shadow-md">Central de Comando</h1>
           </div>
           <div className="flex flex-wrap gap-3 w-full md:w-auto">
-            <button onClick={handleZerarHistorico} className="bg-red-900/40 hover:bg-red-600/60 border border-red-500/50 text-red-100 px-4 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-900/20">
-              ⚠️ Zerar Histórico
-            </button>
-            <button onClick={handleRepararFilas} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 px-4 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-sm">
-              🛠️ Organizar Fila
-            </button>
-            <button onClick={handleConfiguracaoInteligente} className="group relative px-5 py-3 font-black text-white rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-[0_0_20px_rgba(37,99,235,0.2)] transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider overflow-hidden">
-              <div className="absolute inset-0 bg-white/20 group-hover:translate-x-full transition-transform duration-500 -translate-x-full skew-x-12"></div>
-              <span>⚡ Gerar Escala</span>
-            </button>
-            <button onClick={carregar} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 px-4 py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center">
-              ↻ Atualizar
-            </button>
+            <button onClick={() => setModalRelatorio(true)} className="bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/50 text-indigo-300 px-4 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all">📊 Ver Dashboard</button>
+            <button onClick={handleZerarHistorico} className="bg-red-900/40 hover:bg-red-600/60 border border-red-500/50 text-red-100 px-4 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all">⚠️ Zerar Tudo</button>
+            <button onClick={handleRepararFilas} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 px-4 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all">🛠️ Organizar Fila</button>
+            <button onClick={() => {setAutenticado(false); setSenhaInput("");}} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 px-4 py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all">🚪 Sair</button>
           </div>
         </header>
 
+        {/* MOTORISTAS */}
         {motoristas && motoristas.length > 0 && (
           <section className="mb-12 bg-slate-900/50 backdrop-blur-xl rounded-[2rem] border border-slate-800/80 overflow-hidden shadow-2xl">
             <div className="p-5 bg-gradient-to-r from-amber-500/10 to-transparent border-b border-amber-500/20 flex items-center gap-3">
@@ -180,28 +296,24 @@ export default function AdminPage() {
                   <div className="flex items-center gap-5 w-full">
                     <span className={`w-10 h-10 rounded-xl flex flex-shrink-0 items-center justify-center font-black shadow-inner ${idx === 0 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-amber-500/20' : 'bg-slate-800 text-slate-500 border border-slate-700'}`}>{idx + 1}º</span>
                     <div className="w-full">
-                      <input 
-                        className="w-full bg-transparent border-b border-slate-700 hover:border-slate-500 focus:border-amber-500 font-black text-lg text-white focus:outline-none transition-colors pb-1 placeholder-slate-600" 
-                        defaultValue={m.nome} 
-                        onBlur={(e) => { atualizarMotorista(m.id, { nome: e.target.value }); carregar(); }} 
-                      />
-                      <div className="flex flex-wrap items-center gap-2 mt-3">
-                        <p className="text-[11px] text-slate-300 uppercase font-bold flex items-center gap-1 mr-2">
-                          ⏱️ Última: <span className="text-slate-400 font-normal">{m.ultima_viagem ? formatarParaBR(m.ultima_viagem) : 'Sem registo'}</span>
-                        </p>
-                        <button onClick={() => editDataViagemMotorista(m.id, m.ultima_viagem)} className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 px-2 py-1 rounded text-[9px] uppercase font-black transition-all shadow-sm">
-                          ✏️ Corrigir
+                      <p className="font-black text-lg text-white block">{m.nome}</p>
+                      
+                      {/* BOTÕES DE CONTACTO / WHATSAPP (MOTORISTAS) */}
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <button onClick={() => handleEditTelefone(m.id, 'motorista', m.telefone, m.nome)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1.5 rounded uppercase font-bold transition-colors">
+                          {m.telefone ? '📱 Editar Tel' : '📱 Add Tel'}
                         </button>
-                        {m.ultima_viagem && (
-                          <button onClick={() => limparDataMotorista(m.id)} className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-2 py-1 rounded text-[9px] uppercase font-black transition-all shadow-sm" title="Apagar data">
-                            🗑️ Apagar
+                        {m.telefone && (
+                          <button onClick={() => abrirWhatsApp(m.telefone, m.nome)} className="text-[9px] bg-emerald-900/30 text-emerald-400 border border-emerald-900/50 px-3 py-1.5 rounded uppercase font-black hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1 shadow-sm">
+                            💬 WhatsApp
                           </button>
                         )}
                       </div>
+
                     </div>
                   </div>
                   {idx === 0 && (
-                    <button onClick={() => registrarViagemMotorista(m.id).then(carregar)} className="w-full xl:w-auto flex-shrink-0 bg-amber-500 hover:bg-amber-400 text-amber-950 px-5 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.3)] transition-all transform hover:-translate-y-0.5">
+                    <button onClick={() => abrirModalViagem('motorista', m.id, undefined, m.nome)} className="w-full xl:w-auto flex-shrink-0 bg-amber-500 hover:bg-amber-400 text-amber-950 px-5 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.3)] transition-all">
                       Confirmar Viagem
                     </button>
                   )}
@@ -211,155 +323,102 @@ export default function AdminPage() {
           </section>
         )}
 
-        {plantoes.map((plantao: any) => {
-          const ePortaria = plantao.nome.toLowerCase().includes('portaria');
-          const diasEscala = plantao.dias_plantao || "";
-          const deServicoHoje = diasEscala.includes(diaHoje) || diasEscala.includes(diaHojeSimples);
+        <p className="text-xs text-slate-500 mb-6 uppercase tracking-widest flex items-center gap-2">💡 Dica: Pode segurar e arrastar <span className="text-slate-300 text-base">☰</span> qualquer membro para reordenar a fila manualmente.</p>
 
-          return (
-            <div key={plantao.id} className="bg-slate-900/60 backdrop-blur-xl rounded-[2rem] border border-slate-800/80 overflow-hidden shadow-2xl mb-10">
-              
-              <div className="p-6 lg:p-8 bg-slate-800/20 flex flex-col md:flex-row md:justify-between md:items-center gap-5 border-b border-slate-800/80 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
-                <div className="flex flex-col items-start gap-2">
+        {/* EQUIPAS (PLANTOES) COM ARRASTAR E SOLTAR */}
+        <div className="grid grid-cols-1 gap-8">
+          {plantoes.map((plantao: any) => {
+            const ePortaria = plantao.nome.toLowerCase().includes('portaria');
+            return (
+              <div key={plantao.id} className="bg-slate-900/60 backdrop-blur-xl rounded-[2rem] border border-slate-800/80 overflow-hidden shadow-2xl mb-4">
+                <div className="p-6 lg:p-8 bg-slate-800/20 flex flex-col md:flex-row md:justify-between md:items-center gap-5 border-b border-slate-800/80 relative">
                   <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200 uppercase tracking-wide flex items-center gap-3">
                     {ePortaria ? '🚪' : '🛡️'} {plantao.nome}
                   </h2>
-                  
-                  {/* RADAR INTELIGENTE ADMIN */}
-                  {!ePortaria && (
-                    <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border shadow-sm ${deServicoHoje ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50' : 'bg-amber-500/20 text-amber-400 border-amber-500/50'}`}>
-                      {deServicoHoje ? '🟢 Equipe de Serviço Hoje' : '🌴 Equipe de Folga Hoje (Ideal p/ Viagem)'}
-                    </div>
-                  )}
-                </div>
-                
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-1 flex items-center">
-                    <span className="text-[10px] text-slate-500 uppercase font-black px-3">Escala:</span>
-                    <button onClick={() => {
-                      const dias = prompt("Novos dias de escala:", plantao.dias_plantao);
-                      if (dias) { atualizarDiasPlantao(plantao.id, dias); carregar(); }
-                    }} className="bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold px-4 py-2 rounded-lg text-xs transition-colors border border-slate-700/50">
-                      ✏️ {plantao.dias_plantao || 'A definir'}
-                    </button>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button onClick={() => handleAdicionarMembro(plantao.id, plantao.nome)} className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-4 py-2.5 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all">➕ Add Membro</button>
                   </div>
-                  <button onClick={() => handleAdicionarMembro(plantao.id, plantao.nome)} className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-4 py-2.5 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all shadow-sm">
-                    ➕ Add Membro
-                  </button>
                 </div>
-              </div>
 
-              <div className="overflow-x-auto w-full">
-                <table className="w-full text-left text-sm whitespace-nowrap">
-                  <thead>
-                    <tr className="text-slate-500 border-b border-slate-800/80 uppercase font-black text-[10px] tracking-widest bg-slate-950/30">
-                      {!ePortaria && <th className="p-5 lg:p-6 w-16 text-center">Fila</th>}
-                      <th className="p-5 lg:p-6">Nome do Servidor</th>
-                      <th className="p-5 lg:p-6 text-center">Gestão de Folga</th>
-                      {!ePortaria && <th className="p-5 lg:p-6 text-center">Data Última Viagem</th>}
-                      
-                      {!ePortaria && (
-                        <th className="p-5 lg:p-6 text-right pr-8">
-                          {plantao.servidores.length >= 2 ? (
-                            <button onClick={() => registrarViagemDupla(plantao.id).then(carregar)} className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-[0_0_20px_rgba(59,130,246,0.4)] transform hover:-translate-y-0.5 transition-all">
-                              ✈️ Viagem da Dupla (1º e 2º)
-                            </button>
-                          ) : (
-                            <span className="text-[9px] text-slate-600">Registro Individual Abaixo</span>
+                <div className="overflow-x-auto w-full">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead>
+                      <tr className="text-slate-500 border-b border-slate-800/80 uppercase font-black text-[10px] tracking-widest bg-slate-950/30">
+                        <th className="p-4 w-10 text-center">Pos</th>
+                        <th className="p-4">Nome do Servidor</th>
+                        <th className="p-4 text-center">Folga</th>
+                        <th className="p-4 text-center">Último Destino</th>
+                        <th className="p-4 text-right pr-8">
+                          {!ePortaria && plantao.servidores.length >= 2 && (
+                            <button onClick={() => abrirModalViagem('dupla', 0, plantao.id, 'Dupla Atual')} className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-[0_0_20px_rgba(59,130,246,0.4)]">✈️ Viagem da Dupla</button>
                           )}
                         </th>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/40">
-                    {plantao.servidores.map((s: any, idx: number) => {
-                      const proximo = (idx === 0 || idx === 1) && !ePortaria;
-                      return (
-                        <tr key={s.id} className={`hover:bg-white/[0.02] transition-colors ${proximo ? 'bg-blue-900/10' : ''}`}>
-                          
-                          {!ePortaria && (
-                            <td className="p-5 lg:p-6 text-center">
-                              <span className={`inline-flex items-center justify-center w-10 h-10 rounded-xl font-black text-sm shadow-inner ${proximo ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-blue-500/20' : 'bg-slate-800 text-slate-500 border border-slate-700/50'}`}>
-                                {s.posicao_fila}º
-                              </span>
-                            </td>
-                          )}
-                          
-                          <td className="p-5 lg:p-6">
-                            <div className="flex items-center gap-2">
-                              <span className={`font-black text-[15px] block transition-colors ${proximo ? 'text-white' : 'text-slate-300'}`}>
-                                {s.nome}
-                              </span>
-                              <button onClick={() => handleEditNome(s.id, s.nome)} className="text-slate-500 hover:text-emerald-400 transition-colors" title="Corrigir Nome">
-                                ✏️
-                              </button>
-                            </div>
-                            <div className="flex items-center gap-2 mt-2">
-                              {s.is_supervisor === 1 && <span className="text-[8px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded font-black uppercase tracking-widest inline-block">Supervisor</span>}
-                              <button onClick={() => handleTrocarPlantao(s.id, plantao.id)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-0.5 rounded uppercase tracking-widest transition-colors flex items-center gap-1" title="Mover para outra equipa">
-                                🔄 Mover
-                              </button>
-                              <button onClick={() => handleRemoverMembro(s.id, s.nome)} className="text-[9px] bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/30 px-2 py-0.5 rounded uppercase tracking-widest transition-colors flex items-center gap-1" title="Apagar do sistema">
-                                🗑️ Apagar
-                              </button>
-                            </div>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/40">
+                      {plantao.servidores.map((s: any, idx: number) => (
+                        <tr 
+                          key={s.id} 
+                          draggable 
+                          onDragStart={(e) => onDragStart(e, idx, 'servidor', plantao.id)}
+                          onDragEnd={onDragEnd}
+                          onDragOver={onDragOver}
+                          onDragLeave={onDragLeave}
+                          onDrop={(e) => onDrop(e, idx, 'servidor', plantao.id)}
+                          className={`hover:bg-white/[0.05] transition-colors cursor-grab active:cursor-grabbing ${idx === 0 || idx === 1 ? (!ePortaria ? 'bg-blue-900/10' : '') : ''}`}
+                        >
+                          <td className="p-4 text-center flex items-center justify-center gap-2">
+                            <span className="text-slate-600 text-lg cursor-grab hover:text-white transition-colors">☰</span>
+                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg font-black text-sm bg-slate-800 text-slate-500 border border-slate-700/50">{s.posicao_fila}º</span>
                           </td>
-                          
-                          <td className="p-5 lg:p-6 text-center">
-                            <div className="flex flex-col items-center gap-2">
-                              <span className={`text-[11px] font-black ${s.data_folga ? "text-red-400" : "text-slate-500"}`}>
-                                🌴 {s.data_folga || 'Não definida'}
-                              </span>
-                              <div className="flex gap-1">
-                                <button onClick={() => handleEditFolga(s.id, s.data_folga)} className="bg-slate-800/80 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1 rounded-lg text-[9px] uppercase tracking-widest transition-colors flex items-center gap-1">
-                                  ✏️ Corrigir
+                          <td className="p-4">
+                            <span className="font-black text-[15px] text-white block">{s.nome}</span>
+                            
+                            {/* BOTOES DE CONTACTO / WHATSAPP (SERVIDORES) */}
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                              <button onClick={() => handleEditTelefone(s.id, 'servidor', s.telefone, s.nome)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1 rounded uppercase font-bold transition-colors">
+                                {s.telefone ? '📱 Editar Tel' : '📱 Add Tel'}
+                              </button>
+                              {s.telefone && (
+                                <button onClick={() => abrirWhatsApp(s.telefone, s.nome)} className="text-[9px] bg-emerald-900/30 text-emerald-400 border border-emerald-900/50 px-2 py-1 rounded uppercase font-black hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1 shadow-sm">
+                                  💬 WhatsApp
                                 </button>
-                                {s.data_folga && (
-                                  <button onClick={() => handleEditFolga(s.id, "")} className="bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/30 px-2 py-1 rounded-lg text-[9px] uppercase tracking-widest transition-colors" title="Apagar Folga">
-                                    🗑️
-                                  </button>
-                                )}
+                              )}
+                              <span className="w-px h-3 bg-slate-700 mx-1"></span>
+                              <button onClick={() => handleTrocarPlantao(s.id, plantao.id)} className="text-[9px] text-slate-500 hover:text-slate-300 uppercase font-bold">🔄 Mover</button>
+                              <button onClick={() => handleRemoverMembro(s.id, s.nome)} className="text-[9px] text-red-500/70 hover:text-red-400 uppercase font-bold">🗑️ Apagar</button>
+                            </div>
+
+                          </td>
+                          <td className="p-4 text-center">
+                            <div className="flex flex-col items-center gap-1">
+                              <span className={`text-[11px] font-black px-2 py-0.5 rounded ${s.data_folga ? "text-emerald-400" : "text-slate-500"}`}>🌴 {s.data_folga || 'Não def'}</span>
+                              <div className="flex gap-1">
+                                <button onClick={() => setModalFolga({id: s.id, data: ''})} className="text-slate-500 hover:text-white text-[9px] uppercase tracking-widest font-bold">📅 Definir</button>
+                                {s.data_folga && <button onClick={() => limparFolga(s.id)} className="text-red-500 hover:text-red-400 text-[9px] font-bold">🗑️</button>}
                               </div>
                             </div>
                           </td>
-                          
-                          {!ePortaria && (
-                            <td className="p-5 lg:p-6 text-center">
-                              <div className="flex flex-col items-center gap-2">
-                                <span className="text-[11px] font-bold text-slate-300">
-                                  ⏱️ {s.ultima_viagem ? formatarParaBR(s.ultima_viagem) : 'Sem registo'}
-                                </span>
-                                <div className="flex gap-1">
-                                  <button onClick={() => editDataViagem(s.id, s.ultima_viagem)} className="bg-slate-800/80 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1 rounded-lg text-[9px] uppercase tracking-widest transition-colors flex items-center gap-1">
-                                    ✏️ Corrigir
-                                  </button>
-                                  {s.ultima_viagem && (
-                                    <button onClick={() => limparDataServidor(s.id)} className="bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/30 px-2 py-1 rounded-lg text-[9px] uppercase tracking-widest transition-colors" title="Apagar Data da Viagem">
-                                      🗑️
-                                    </button>
-                                  )}
-                                </div>
+                          <td className="p-4 text-center">
+                            {!ePortaria && (
+                              <div className="flex flex-col items-center gap-1">
+                                <span className="text-[11px] font-bold text-slate-300">⏱️ {s.ultima_viagem ? formatarParaBR(s.ultima_viagem) : '--/--/----'}</span>
+                                {s.destino_viagem && <span className={`text-[9px] font-black uppercase ${s.destino_viagem === 'Interior' ? 'text-amber-400' : 'text-blue-400'}`}>📍 {s.destino_viagem}</span>}
                               </div>
-                            </td>
-                          )}
-                          
-                          {!ePortaria && (
-                            <td className="p-5 lg:p-6 text-right pr-8">
-                              <button onClick={() => registrarViagem(s.id, plantao.id).then(carregar)} className="bg-emerald-900/40 hover:bg-emerald-600/60 border border-emerald-500/50 text-emerald-300 px-4 py-2.5 rounded-xl font-black uppercase text-[9px] tracking-widest transition-all shadow-sm hover:shadow-[0_0_15px_rgba(16,185,129,0.4)]" title="Registrar viagem APENAS para este servidor">
-                                ✈️ Viajou (Individual)
-                              </button>
-                            </td>
-                          )}
+                            )}
+                          </td>
+                          <td className="p-4 text-right pr-8">
+                            {!ePortaria && <button onClick={() => abrirModalViagem('individual', s.id, plantao.id, s.nome)} className="bg-emerald-900/40 hover:bg-emerald-600/60 border border-emerald-500/50 text-emerald-300 px-4 py-2 rounded-xl font-black uppercase text-[9px] tracking-widest shadow-sm transition-all">✈️ Viajou Só</button>}
+                          </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </main>
   );
