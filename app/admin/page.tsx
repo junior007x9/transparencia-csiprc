@@ -34,6 +34,9 @@ export default function AdminPage() {
   const [viagemAdolescente, setViagemAdolescente] = useState("");
   const [viagemCidade, setViagemCidade] = useState("");
   const [viagemObservacoes, setViagemObservacoes] = useState("");
+  
+  // NOVO ESTADO: Controla se está salvando para bloquear múltiplos cliques
+  const [salvandoViagem, setSalvandoViagem] = useState(false);
 
   const carregar = async () => {
     setLoading(true);
@@ -146,17 +149,30 @@ export default function AdminPage() {
     setViagemObservacoes("");
   };
 
+  // MODIFICADO: Sistema de bloqueio e feedback
   const confirmarViagem = async (destino: string) => {
-    if (!modalViagem) return;
-    if (modalViagem.tipo === 'motorista') {
-      await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes);
-    } else if (modalViagem.tipo === 'dupla') {
-      await registrarViagemDupla(modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes);
-    } else if (modalViagem.tipo === 'individual') {
-      await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes);
+    if (!modalViagem || salvandoViagem) return; // Se já estiver salvando, ignora o clique
+    setSalvandoViagem(true); // Bloqueia os botões
+
+    try {
+      if (modalViagem.tipo === 'motorista') {
+        await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes);
+      } else if (modalViagem.tipo === 'dupla') {
+        await registrarViagemDupla(modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes);
+      } else if (modalViagem.tipo === 'individual') {
+        await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes);
+      }
+      
+      // Feedback de Sucesso!
+      alert("✅ Viagem registada e adicionada ao histórico com sucesso!");
+      
+      setModalViagem(null); 
+      await carregar(); // Recarrega a tela com os novos dados
+    } catch (error) {
+      alert("❌ Ocorreu um erro ao salvar a viagem. Tente novamente.");
+    } finally {
+      setSalvandoViagem(false); // Libera os botões independentemente de sucesso ou erro
     }
-    setModalViagem(null); 
-    carregar();
   };
 
   const handleExcluirRelatorio = async (id: number) => {
@@ -205,7 +221,8 @@ export default function AdminPage() {
                   type="date" 
                   value={viagemData} 
                   onChange={(e) => setViagemData(e.target.value)} 
-                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none" 
+                  disabled={salvandoViagem}
+                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" 
                 />
               </div>
               <div>
@@ -215,7 +232,8 @@ export default function AdminPage() {
                   placeholder="Ex: João da Silva" 
                   value={viagemAdolescente} 
                   onChange={(e) => setViagemAdolescente(e.target.value)} 
-                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none" 
+                  disabled={salvandoViagem}
+                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" 
                 />
               </div>
               <div>
@@ -225,7 +243,8 @@ export default function AdminPage() {
                   placeholder="Ex: Imperatriz" 
                   value={viagemCidade} 
                   onChange={(e) => setViagemCidade(e.target.value)} 
-                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none" 
+                  disabled={salvandoViagem}
+                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" 
                 />
               </div>
               <div>
@@ -234,16 +253,30 @@ export default function AdminPage() {
                   placeholder="Alguma informação extra ou nota..." 
                   value={viagemObservacoes} 
                   onChange={(e) => setViagemObservacoes(e.target.value)} 
-                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none min-h-[80px]" 
+                  disabled={salvandoViagem}
+                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none min-h-[80px] disabled:opacity-50" 
                 />
               </div>
             </div>
 
             <div className="flex flex-col gap-3 mb-6 mt-2">
-              <button onClick={() => confirmarViagem('Interior')} className="w-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/50 text-amber-400 py-4 rounded-xl font-black uppercase tracking-widest transition-all">📍 Interior <span className="text-xs ml-2 opacity-70">(R$ 320,00)</span></button>
-              <button onClick={() => confirmarViagem('São Luís')} className="w-full bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 text-blue-400 py-4 rounded-xl font-black uppercase tracking-widest transition-all">📍 São Luís <span className="text-xs ml-2 opacity-70">(R$ 640,00)</span></button>
+              <button 
+                onClick={() => confirmarViagem('Interior')} 
+                disabled={salvandoViagem}
+                className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/50 text-amber-400'}`}
+              >
+                {salvandoViagem ? '⏳ SALVANDO...' : <>📍 Interior <span className="text-xs ml-2 opacity-70">(R$ 320,00)</span></>}
+              </button>
+              
+              <button 
+                onClick={() => confirmarViagem('São Luís')} 
+                disabled={salvandoViagem}
+                className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 text-blue-400'}`}
+              >
+                {salvandoViagem ? '⏳ SALVANDO...' : <>📍 São Luís <span className="text-xs ml-2 opacity-70">(R$ 640,00)</span></>}
+              </button>
             </div>
-            <button onClick={() => setModalViagem(null)} className="text-slate-500 hover:text-white uppercase font-bold text-xs tracking-widest">Cancelar</button>
+            <button onClick={() => setModalViagem(null)} disabled={salvandoViagem} className="text-slate-500 hover:text-white uppercase font-bold text-xs tracking-widest disabled:opacity-50">Cancelar</button>
           </div>
         </div>
       )}
