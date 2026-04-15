@@ -150,7 +150,6 @@ export default function AdminPage() {
     setViagemObservacoes("");
   };
 
-  // FUNÇÃO ATUALIZADA: Agora captura e mostra o erro exato do SQL!
   const confirmarViagem = async (destino: string) => {
     if (!modalViagem || salvandoViagem) return;
     setSalvandoViagem(true);
@@ -166,14 +165,12 @@ export default function AdminPage() {
         result = await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
       }
       
-      // Se a resposta retornar sucesso como falso, mostra o erro e trava.
       if (result && result.success === false) {
         alert(`❌ ERRO NO BANCO DE DADOS:\n\n${result.error}\n\n⚠️ Provavelmente falta adicionar a coluna 'ultima_viagem' ou 'destino_viagem' no Turso.`);
         setSalvandoViagem(false);
         return;
       }
       
-      // SUCESSO - FORMATAÇÃO DO TEXTO PARA A DIRETORA
       const [ano, mes, dia] = viagemData.split('-');
       const dataFormatada = `${dia}/${mes}/${ano}`;
       const horaTexto = viagemHora ? ` às ${viagemHora}hs` : '';
@@ -198,6 +195,39 @@ export default function AdminPage() {
     } finally {
       setSalvandoViagem(false);
     }
+  };
+
+  // NOVA FUNÇÃO: Reconstrói a mensagem a partir do histórico
+  const handleVerRelatorioHistorico = (viagemSelecionada: any) => {
+    // Procura todos os viajantes que foram no mesmo dia, pro mesmo destino, na mesma cidade e horário
+    const companheiros = relatorio.filter(item => 
+      item.data_viagem === viagemSelecionada.data_viagem && 
+      item.destino === viagemSelecionada.destino && 
+      item.cidade === viagemSelecionada.cidade &&
+      item.horario === viagemSelecionada.horario
+    ).map(item => item.nome_pessoa);
+
+    // Junta os nomes removendo os duplicados
+    const nomesEquipe = Array.from(new Set(companheiros)).join(" e ");
+
+    const [ano, mes, dia] = (viagemSelecionada.data_viagem || "").split('T')[0].split('-');
+    const dataFormatada = `${dia}/${mes}/${ano}`;
+    const horaTexto = viagemSelecionada.horario ? ` às ${viagemSelecionada.horario}hs` : '';
+    const local = viagemSelecionada.cidade ? `${viagemSelecionada.cidade} (${viagemSelecionada.destino})` : viagemSelecionada.destino;
+    
+    let msg = `🚐 *COMUNICADO DE VIAGEM - CSIPRC* 🚐\n\n`;
+    msg += `📍 *Destino:* ${local}\n`;
+    msg += `🗓️ *Data:* ${dataFormatada}${horaTexto}\n`;
+    if (viagemSelecionada.adolescente) msg += `👤 *Adolescente:* ${viagemSelecionada.adolescente}\n`;
+    
+    msg += `\n👥 *Equipe Escalonada:*\n↳ ${nomesEquipe}\n`;
+    
+    if (viagemSelecionada.observacoes) msg += `\n📝 *Observações:* ${viagemSelecionada.observacoes}\n`;
+    
+    msg += `\n💰 *Status:* Diárias para folha suplementar.`;
+
+    // Abre a janela reutilizando o estado do relatorio gerado
+    setRelatorioGerado(msg);
   };
 
   const handleExcluirRelatorio = async (id: number) => {
@@ -242,9 +272,9 @@ export default function AdminPage() {
       {relatorioGerado && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
           <div className="bg-slate-900 border border-emerald-500/50 rounded-3xl w-full max-w-md shadow-[0_0_50px_rgba(16,185,129,0.15)] p-8 text-center transform animate-in zoom-in-95 duration-200">
-            <div className="text-6xl mb-4 animate-bounce">✅</div>
-            <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Viagem Registada!</h3>
-            <p className="text-slate-400 text-sm mb-6">O registo foi salvo no histórico e a data foi atualizada. Abaixo está o resumo gerado para você.</p>
+            <div className="text-6xl mb-4 animate-bounce">📋</div>
+            <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Mensagem Pronta!</h3>
+            <p className="text-slate-400 text-sm mb-6">Abaixo está o resumo da viagem gerado para você copiar e enviar à direção.</p>
             
             <textarea 
               readOnly
@@ -262,7 +292,7 @@ export default function AdminPage() {
                 }} 
                 className="flex-[2] bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-emerald-900/50 flex items-center justify-center gap-2"
               >
-                📋 Copiar Relatório
+                📋 Copiar Mensagem
               </button>
             </div>
           </div>
@@ -392,9 +422,25 @@ export default function AdminPage() {
                       <td className="p-4 text-slate-500 text-xs">{r.equipe} ({r.papel})</td>
                       <td className="p-4"><span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${r.destino === 'Interior' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-blue-500/10 text-blue-400 border-blue-500/30'}`}>{r.destino}</span></td>
                       <td className="p-4 text-right font-black text-emerald-400">R$ {r.valor?.toFixed(2)}</td>
-                      <td className="p-4 text-center">
-                        <button onClick={() => handleExcluirRelatorio(r.id)} className="bg-red-900/30 hover:bg-red-600 text-red-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" title="Apagar erro">🗑️ Excluir</button>
+                      
+                      {/* BOTÕES DE AÇÃO COM O NOVO BOTÃO DE VER */}
+                      <td className="p-4 flex items-center justify-center gap-2">
+                        <button 
+                          onClick={() => handleVerRelatorioHistorico(r)} 
+                          className="bg-blue-900/30 hover:bg-blue-600 text-blue-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" 
+                          title="Ver Mensagem Pronta"
+                        >
+                          👁️ Ver
+                        </button>
+                        <button 
+                          onClick={() => handleExcluirRelatorio(r.id)} 
+                          className="bg-red-900/30 hover:bg-red-600 text-red-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" 
+                          title="Apagar erro"
+                        >
+                          🗑️ Excluir
+                        </button>
                       </td>
+
                     </tr>
                   ))}
                   {relatorio.length === 0 && <tr><td colSpan={9} className="p-8 text-center text-slate-500">Nenhuma viagem registada no histórico.</td></tr>}
