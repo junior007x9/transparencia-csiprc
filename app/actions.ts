@@ -58,7 +58,8 @@ export async function reordenarFila(tabela: 'servidores' | 'motoristas', idsOrde
 }
 
 async function salvarNoHistorico(nome: string, papel: string, equipe: string, data: string, destino: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
-  const valor = destino === 'Interior' ? 320.00 : 640.00;
+  // ATUALIZADO: Gestão custa 0
+  const valor = destino === 'Interior' ? 320.00 : destino === 'São Luís' ? 640.00 : 0.00;
   await client.execute({
     sql: "INSERT INTO viagens_realizadas (nome_pessoa, papel, equipe, data_viagem, destino, valor, adolescente, cidade, observacoes, horario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     args: [nome, papel, equipe, data, destino, valor, adolescente || null, cidade || null, observacoes || null, horario || null] as any[]

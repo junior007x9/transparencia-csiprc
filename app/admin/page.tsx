@@ -37,8 +37,6 @@ export default function AdminPage() {
   const [viagemObservacoes, setViagemObservacoes] = useState("");
   
   const [salvandoViagem, setSalvandoViagem] = useState(false);
-  
-  // Guarda o texto gerado para o WhatsApp da Diretora
   const [relatorioGerado, setRelatorioGerado] = useState<string | null>(null);
 
   const carregar = async () => {
@@ -185,7 +183,8 @@ export default function AdminPage() {
       
       if (viagemObservacoes) msg += `\n📝 *Observações:* ${viagemObservacoes}\n`;
       
-      msg += `\n💰 *Status:* Diárias para folha suplementar.`;
+      // Ajuste de mensagem caso seja Gestão
+      msg += `\n💰 *Status:* ${destino === 'Gestão' ? 'Viagem sem custo (Gestão).' : 'Diárias para folha suplementar.'}`;
 
       setRelatorioGerado(msg);
       setModalViagem(null); 
@@ -197,9 +196,7 @@ export default function AdminPage() {
     }
   };
 
-  // NOVA FUNÇÃO: Reconstrói a mensagem a partir do histórico
   const handleVerRelatorioHistorico = (viagemSelecionada: any) => {
-    // Procura todos os viajantes que foram no mesmo dia, pro mesmo destino, na mesma cidade e horário
     const companheiros = relatorio.filter(item => 
       item.data_viagem === viagemSelecionada.data_viagem && 
       item.destino === viagemSelecionada.destino && 
@@ -207,7 +204,6 @@ export default function AdminPage() {
       item.horario === viagemSelecionada.horario
     ).map(item => item.nome_pessoa);
 
-    // Junta os nomes removendo os duplicados
     const nomesEquipe = Array.from(new Set(companheiros)).join(" e ");
 
     const [ano, mes, dia] = (viagemSelecionada.data_viagem || "").split('T')[0].split('-');
@@ -224,9 +220,8 @@ export default function AdminPage() {
     
     if (viagemSelecionada.observacoes) msg += `\n📝 *Observações:* ${viagemSelecionada.observacoes}\n`;
     
-    msg += `\n💰 *Status:* Diárias para folha suplementar.`;
+    msg += `\n💰 *Status:* ${viagemSelecionada.destino === 'Gestão' ? 'Viagem sem custo (Gestão).' : 'Diárias para folha suplementar.'}`;
 
-    // Abre a janela reutilizando o estado do relatorio gerado
     setRelatorioGerado(msg);
   };
 
@@ -334,11 +329,16 @@ export default function AdminPage() {
 
             <div className="flex flex-col gap-3 mb-6 mt-2">
               <button onClick={() => confirmarViagem('Interior')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/50 text-amber-400'}`}>
-                {salvandoViagem ? '⏳ SALVANDO E GERANDO RELATÓRIO...' : <>📍 Interior <span className="text-xs ml-2 opacity-70">(R$ 320,00)</span></>}
+                {salvandoViagem ? '⏳ SALVANDO...' : <>📍 Interior <span className="text-xs ml-2 opacity-70">(R$ 320,00)</span></>}
               </button>
               
               <button onClick={() => confirmarViagem('São Luís')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 text-blue-400'}`}>
-                {salvandoViagem ? '⏳ SALVANDO E GERANDO RELATÓRIO...' : <>📍 São Luís <span className="text-xs ml-2 opacity-70">(R$ 640,00)</span></>}
+                {salvandoViagem ? '⏳ SALVANDO...' : <>📍 São Luís <span className="text-xs ml-2 opacity-70">(R$ 640,00)</span></>}
+              </button>
+
+              {/* NOVO BOTÃO DE GESTÃO (ROXO) */}
+              <button onClick={() => confirmarViagem('Gestão')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/50 text-purple-400'}`}>
+                {salvandoViagem ? '⏳ SALVANDO...' : <>🏢 Viagem de Gestão <span className="text-xs ml-2 opacity-70">(Sem custo)</span></>}
               </button>
             </div>
             <button onClick={() => setModalViagem(null)} disabled={salvandoViagem} className="text-slate-500 hover:text-white uppercase font-bold text-xs tracking-widest disabled:opacity-50">Cancelar</button>
@@ -420,27 +420,20 @@ export default function AdminPage() {
                       <td className="p-4 text-slate-300">{r.cidade || '-'}</td>
                       <td className="p-4 text-slate-400 text-[10px] max-w-[120px] truncate" title={r.observacoes}>{r.observacoes || '-'}</td>
                       <td className="p-4 text-slate-500 text-xs">{r.equipe} ({r.papel})</td>
-                      <td className="p-4"><span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${r.destino === 'Interior' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-blue-500/10 text-blue-400 border-blue-500/30'}`}>{r.destino}</span></td>
-                      <td className="p-4 text-right font-black text-emerald-400">R$ {r.valor?.toFixed(2)}</td>
-                      
-                      {/* BOTÕES DE AÇÃO COM O NOVO BOTÃO DE VER */}
-                      <td className="p-4 flex items-center justify-center gap-2">
-                        <button 
-                          onClick={() => handleVerRelatorioHistorico(r)} 
-                          className="bg-blue-900/30 hover:bg-blue-600 text-blue-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" 
-                          title="Ver Mensagem Pronta"
-                        >
-                          👁️ Ver
-                        </button>
-                        <button 
-                          onClick={() => handleExcluirRelatorio(r.id)} 
-                          className="bg-red-900/30 hover:bg-red-600 text-red-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" 
-                          title="Apagar erro"
-                        >
-                          🗑️ Excluir
-                        </button>
+                      <td className="p-4">
+                        <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${
+                          r.destino === 'Interior' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 
+                          r.destino === 'Gestão' ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' : 
+                          'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                        }`}>
+                          {r.destino}
+                        </span>
                       </td>
-
+                      <td className="p-4 text-right font-black text-emerald-400">R$ {r.valor?.toFixed(2)}</td>
+                      <td className="p-4 flex items-center justify-center gap-2">
+                        <button onClick={() => handleVerRelatorioHistorico(r)} className="bg-blue-900/30 hover:bg-blue-600 text-blue-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" title="Ver Mensagem Pronta">👁️ Ver</button>
+                        <button onClick={() => handleExcluirRelatorio(r.id)} className="bg-red-900/30 hover:bg-red-600 text-red-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" title="Apagar erro">🗑️ Excluir</button>
+                      </td>
                     </tr>
                   ))}
                   {relatorio.length === 0 && <tr><td colSpan={9} className="p-8 text-center text-slate-500">Nenhuma viagem registada no histórico.</td></tr>}
@@ -587,7 +580,13 @@ export default function AdminPage() {
                             {!ePortaria && (
                               <div className="flex flex-col items-center gap-1">
                                 <span className="text-[11px] font-bold text-slate-300">⏱️ {s.ultima_viagem ? formatarParaBR(s.ultima_viagem) : '--/--/----'}</span>
-                                {s.destino_viagem && <span className={`text-[9px] font-black uppercase ${s.destino_viagem === 'Interior' ? 'text-amber-400' : 'text-blue-400'}`}>📍 {s.destino_viagem}</span>}
+                                {s.destino_viagem && (
+                                  <span className={`text-[9px] font-black uppercase ${
+                                    s.destino_viagem === 'Interior' ? 'text-amber-400' : 
+                                    s.destino_viagem === 'Gestão' ? 'text-purple-400' : 
+                                    'text-blue-400'
+                                  }`}>📍 {s.destino_viagem}</span>
+                                )}
                               </div>
                             )}
                           </td>
