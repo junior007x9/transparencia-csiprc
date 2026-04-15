@@ -5,7 +5,7 @@ import {
   getDadosCompletos, registrarViagem, registrarViagemDupla, registrarViagemMotorista, 
   atualizarServidor, atualizarMotorista, configurarEscalaAutomatica, atualizarDiasPlantao, 
   corrigirNumeracaoFilas, adicionarServidor, removerServidor, zerarHistoricoViagens, 
-  getRelatorioViagens, excluirViagemHistorico, verificarSenhaAdmin, reordenarFila 
+  getRelatorioViagens, excluirViagemHistorico, verificarSenhaAdmin, reordenarFila, limparTodoHistorico 
 } from "../actions";
 
 const formatarParaBR = (dataString: string | null) => {
@@ -35,7 +35,7 @@ export default function AdminPage() {
   const [viagemCidade, setViagemCidade] = useState("");
   const [viagemObservacoes, setViagemObservacoes] = useState("");
   
-  // NOVO ESTADO: Controla se está salvando para bloquear múltiplos cliques
+  // Estado para bloquear os cliques
   const [salvandoViagem, setSalvandoViagem] = useState(false);
 
   const carregar = async () => {
@@ -143,16 +143,15 @@ export default function AdminPage() {
   // --- OUTRAS FUNÇÕES ---
   const abrirModalViagem = (tipo: string, id: number, plantaoId?: number, nomeAlvo?: string) => { 
     setModalViagem({ tipo, id, plantaoId, nomeAlvo });
-    setViagemData(new Date().toISOString().split('T')[0]); // Seta a data de hoje por padrão
-    setViagemAdolescente(""); // Limpa os campos
+    setViagemData(new Date().toISOString().split('T')[0]);
+    setViagemAdolescente(""); 
     setViagemCidade("");
     setViagemObservacoes("");
   };
 
-  // MODIFICADO: Sistema de bloqueio e feedback
   const confirmarViagem = async (destino: string) => {
-    if (!modalViagem || salvandoViagem) return; // Se já estiver salvando, ignora o clique
-    setSalvandoViagem(true); // Bloqueia os botões
+    if (!modalViagem || salvandoViagem) return;
+    setSalvandoViagem(true);
 
     try {
       if (modalViagem.tipo === 'motorista') {
@@ -162,21 +161,26 @@ export default function AdminPage() {
       } else if (modalViagem.tipo === 'individual') {
         await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes);
       }
-      
-      // Feedback de Sucesso!
       alert("✅ Viagem registada e adicionada ao histórico com sucesso!");
-      
       setModalViagem(null); 
-      await carregar(); // Recarrega a tela com os novos dados
+      await carregar();
     } catch (error) {
       alert("❌ Ocorreu um erro ao salvar a viagem. Tente novamente.");
     } finally {
-      setSalvandoViagem(false); // Libera os botões independentemente de sucesso ou erro
+      setSalvandoViagem(false);
     }
   };
 
+  // Funções de apagar Histórico
   const handleExcluirRelatorio = async (id: number) => {
     if (confirm("Deseja APAGAR este registo permanentemente do histórico financeiro?")) { await excluirViagemHistorico(id); carregar(); }
+  };
+
+  const handleLimparTodoHistorico = async () => {
+    if (confirm("⚠️ TEM A CERTEZA ABSOLUTA? Isto vai apagar TODAS as viagens guardadas no histórico permanentemente. Não há como reverter!")) {
+      await limparTodoHistorico();
+      carregar();
+    }
   };
 
   const salvarNovaFolga = async () => {
@@ -299,9 +303,16 @@ export default function AdminPage() {
       {modalRelatorio && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-7xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
-            <div className="bg-slate-950 p-6 flex justify-between items-center border-b border-slate-800">
+            <div className="bg-slate-950 p-6 flex flex-col sm:flex-row justify-between items-center border-b border-slate-800 gap-4">
               <h3 className="font-black text-xl text-white uppercase tracking-widest">📊 Dashboard Financeiro</h3>
-              <button onClick={() => setModalRelatorio(false)} className="bg-slate-800 hover:bg-red-500 text-white p-2 rounded-xl transition-colors">✕</button>
+              <div className="flex items-center gap-3">
+                <button onClick={handleLimparTodoHistorico} className="bg-red-900/40 hover:bg-red-600 border border-red-500/50 text-red-100 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all">
+                  🗑️ Apagar Tudo
+                </button>
+                <button onClick={() => setModalRelatorio(false)} className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl font-bold text-xs transition-colors">
+                  ✕ Fechar
+                </button>
+              </div>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-6 bg-slate-900 border-b border-slate-800">
@@ -331,7 +342,7 @@ export default function AdminPage() {
                     <th className="p-4">Cidade</th>
                     <th className="p-4">Observações</th>
                     <th className="p-4">Equipa/Papel</th>
-                    <th className="p-4">Destino (Região)</th>
+                    <th className="p-4">Destino</th>
                     <th className="p-4 text-right">Valor Pago</th>
                     <th className="p-4 text-center">Ações</th>
                   </tr>

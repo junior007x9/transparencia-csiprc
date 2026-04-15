@@ -42,6 +42,12 @@ export async function excluirViagemHistorico(id: number) {
   return { success: true };
 }
 
+// NOVA FUNÇÃO: Limpar todo o histórico de uma vez
+export async function limparTodoHistorico() {
+  await client.execute("DELETE FROM viagens_realizadas");
+  return { success: true };
+}
+
 export async function reordenarFila(tabela: 'servidores' | 'motoristas', idsOrdenados: number[]) {
   for (let i = 0; i < idsOrdenados.length; i++) {
     await client.execute({
