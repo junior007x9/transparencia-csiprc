@@ -29,9 +29,10 @@ export default function AdminPage() {
   const [modalRelatorio, setModalRelatorio] = useState(false);
   const [modalFolga, setModalFolga] = useState<any | null>(null);
 
-  const hojeObj = new Date();
-  const diaHoje = hojeObj.getDate().toString().padStart(2, '0');
-  const diaHojeSimples = hojeObj.getDate().toString();
+  // Novos campos do Modal
+  const [viagemData, setViagemData] = useState("");
+  const [viagemAdolescente, setViagemAdolescente] = useState("");
+  const [viagemCidade, setViagemCidade] = useState("");
 
   const carregar = async () => {
     setLoading(true);
@@ -129,20 +130,31 @@ export default function AdminPage() {
   };
 
   const abrirWhatsApp = (telefone: string, nome: string) => {
-    const numeroLimpo = telefone.replace(/\D/g, ''); // Remove tudo que não for número
+    const numeroLimpo = telefone.replace(/\D/g, ''); 
     const mensagem = `Olá ${nome}, a sua viagem pelo CSIPRC foi confirmada! Por favor, esteja pronto. 🚀`;
     const url = `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(mensagem)}`;
     window.open(url, '_blank');
   };
 
   // --- OUTRAS FUNÇÕES ---
-  const abrirModalViagem = (tipo: string, id: number, plantaoId?: number, nomeAlvo?: string) => { setModalViagem({ tipo, id, plantaoId, nomeAlvo }); };
+  const abrirModalViagem = (tipo: string, id: number, plantaoId?: number, nomeAlvo?: string) => { 
+    setModalViagem({ tipo, id, plantaoId, nomeAlvo });
+    setViagemData(new Date().toISOString().split('T')[0]); // Seta a data de hoje por padrão
+    setViagemAdolescente(""); // Limpa os campos
+    setViagemCidade("");
+  };
+
   const confirmarViagem = async (destino: string) => {
     if (!modalViagem) return;
-    if (modalViagem.tipo === 'motorista') await registrarViagemMotorista(modalViagem.id, destino);
-    else if (modalViagem.tipo === 'dupla') await registrarViagemDupla(modalViagem.plantaoId!, destino);
-    else if (modalViagem.tipo === 'individual') await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino);
-    setModalViagem(null); carregar();
+    if (modalViagem.tipo === 'motorista') {
+      await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade);
+    } else if (modalViagem.tipo === 'dupla') {
+      await registrarViagemDupla(modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade);
+    } else if (modalViagem.tipo === 'individual') {
+      await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade);
+    }
+    setModalViagem(null); 
+    carregar();
   };
 
   const handleExcluirRelatorio = async (id: number) => {
@@ -177,12 +189,45 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen bg-[#020617] text-slate-300 p-4 md:p-8 font-sans pb-24 relative">
       
-      {/* MODAL DE VIAGEM */}
+      {/* MODAL DE VIAGEM ATUALIZADO */}
       {modalViagem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl p-6 text-center">
             <h3 className="text-xl font-black text-white mb-2 uppercase tracking-wide">Registrar Viagem {modalViagem.nomeAlvo ? `- ${modalViagem.nomeAlvo}` : ''}</h3>
-            <p className="text-slate-400 text-sm mb-6">Selecione o destino para registar na escala e no relatório financeiro.</p>
+            <p className="text-slate-400 text-sm mb-4">Preencha os dados (pode escolher datas futuras para pré-aviso).</p>
+            
+            <div className="flex flex-col gap-3 mb-5 text-left">
+              <div>
+                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Data da Viagem / Pré-aviso</label>
+                <input 
+                  type="date" 
+                  value={viagemData} 
+                  onChange={(e) => setViagemData(e.target.value)} 
+                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none" 
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Nome do Adolescente (Opcional)</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: João da Silva" 
+                  value={viagemAdolescente} 
+                  onChange={(e) => setViagemAdolescente(e.target.value)} 
+                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none" 
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Cidade Destino (Opcional)</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: Imperatriz" 
+                  value={viagemCidade} 
+                  onChange={(e) => setViagemCidade(e.target.value)} 
+                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none" 
+                />
+              </div>
+            </div>
+
             <div className="flex flex-col gap-3 mb-6">
               <button onClick={() => confirmarViagem('Interior')} className="w-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/50 text-amber-400 py-4 rounded-xl font-black uppercase tracking-widest transition-all">📍 Interior <span className="text-xs ml-2 opacity-70">(R$ 320,00)</span></button>
               <button onClick={() => confirmarViagem('São Luís')} className="w-full bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 text-blue-400 py-4 rounded-xl font-black uppercase tracking-widest transition-all">📍 São Luís <span className="text-xs ml-2 opacity-70">(R$ 640,00)</span></button>
@@ -209,7 +254,7 @@ export default function AdminPage() {
       {/* MODAL DO RELATÓRIO DE GASTOS */}
       {modalRelatorio && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-5xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-6xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
             <div className="bg-slate-950 p-6 flex justify-between items-center border-b border-slate-800">
               <h3 className="font-black text-xl text-white uppercase tracking-widest">📊 Dashboard Financeiro</h3>
               <button onClick={() => setModalRelatorio(false)} className="bg-slate-800 hover:bg-red-500 text-white p-2 rounded-xl transition-colors">✕</button>
@@ -238,8 +283,10 @@ export default function AdminPage() {
                   <tr className="text-slate-500 border-b border-slate-800 uppercase font-black text-[10px] tracking-widest">
                     <th className="p-4">Data</th>
                     <th className="p-4">Nome</th>
+                    <th className="p-4">Adolescente</th>
+                    <th className="p-4">Cidade</th>
                     <th className="p-4">Equipa/Papel</th>
-                    <th className="p-4">Destino</th>
+                    <th className="p-4">Destino (Região)</th>
                     <th className="p-4 text-right">Valor Pago</th>
                     <th className="p-4 text-center">Ações</th>
                   </tr>
@@ -249,6 +296,8 @@ export default function AdminPage() {
                     <tr key={r.id} className="hover:bg-slate-800/50 transition-colors">
                       <td className="p-4 text-slate-400">{formatarParaBR(r.data_viagem)}</td>
                       <td className="p-4 text-white font-bold">{r.nome_pessoa}</td>
+                      <td className="p-4 text-slate-300">{r.adolescente || '-'}</td>
+                      <td className="p-4 text-slate-300">{r.cidade || '-'}</td>
                       <td className="p-4 text-slate-500 text-xs">{r.equipe} ({r.papel})</td>
                       <td className="p-4"><span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${r.destino === 'Interior' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-blue-500/10 text-blue-400 border-blue-500/30'}`}>{r.destino}</span></td>
                       <td className="p-4 text-right font-black text-emerald-400">R$ {r.valor?.toFixed(2)}</td>
@@ -257,7 +306,7 @@ export default function AdminPage() {
                       </td>
                     </tr>
                   ))}
-                  {relatorio.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-500">Nenhuma viagem registada no histórico.</td></tr>}
+                  {relatorio.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-slate-500">Nenhuma viagem registada no histórico.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -314,7 +363,7 @@ export default function AdminPage() {
                   </div>
                   {idx === 0 && (
                     <button onClick={() => abrirModalViagem('motorista', m.id, undefined, m.nome)} className="w-full xl:w-auto flex-shrink-0 bg-amber-500 hover:bg-amber-400 text-amber-950 px-5 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.3)] transition-all">
-                      Confirmar Viagem
+                      Confirmar Viagem / Pré-aviso
                     </button>
                   )}
                 </div>
@@ -347,7 +396,7 @@ export default function AdminPage() {
                         <th className="p-4 w-10 text-center">Pos</th>
                         <th className="p-4">Nome do Servidor</th>
                         <th className="p-4 text-center">Folga</th>
-                        <th className="p-4 text-center">Último Destino</th>
+                        <th className="p-4 text-center">Último Destino/Aviso</th>
                         <th className="p-4 text-right pr-8">
                           {!ePortaria && plantao.servidores.length >= 2 && (
                             <button onClick={() => abrirModalViagem('dupla', 0, plantao.id, 'Dupla Atual')} className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-[0_0_20px_rgba(59,130,246,0.4)]">✈️ Viagem da Dupla</button>
@@ -408,7 +457,7 @@ export default function AdminPage() {
                             )}
                           </td>
                           <td className="p-4 text-right pr-8">
-                            {!ePortaria && <button onClick={() => abrirModalViagem('individual', s.id, plantao.id, s.nome)} className="bg-emerald-900/40 hover:bg-emerald-600/60 border border-emerald-500/50 text-emerald-300 px-4 py-2 rounded-xl font-black uppercase text-[9px] tracking-widest shadow-sm transition-all">✈️ Viajou Só</button>}
+                            {!ePortaria && <button onClick={() => abrirModalViagem('individual', s.id, plantao.id, s.nome)} className="bg-emerald-900/40 hover:bg-emerald-600/60 border border-emerald-500/50 text-emerald-300 px-4 py-2 rounded-xl font-black uppercase text-[9px] tracking-widest shadow-sm transition-all">✈️ Pre-aviso / Viagem</button>}
                           </td>
                         </tr>
                       ))}
