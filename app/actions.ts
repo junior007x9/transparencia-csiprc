@@ -57,7 +57,6 @@ export async function reordenarFila(tabela: 'servidores' | 'motoristas', idsOrde
   return { success: true };
 }
 
-// Atualizado para receber o Horário
 async function salvarNoHistorico(nome: string, papel: string, equipe: string, data: string, destino: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
   const valor = destino === 'Interior' ? 320.00 : 640.00;
   await client.execute({
@@ -67,60 +66,72 @@ async function salvarNoHistorico(nome: string, papel: string, equipe: string, da
 }
 
 export async function registrarViagemMotorista(idViajou: number, destino: string, dataViagem?: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
-  const dataDb = dataViagem || new Date().toISOString().split('T')[0];
-  const mRes = await client.execute({ sql: "SELECT nome FROM motoristas WHERE id = ?", args: [idViajou] as any[] });
-  
-  if (mRes.rows.length > 0) await salvarNoHistorico(mRes.rows[0].nome as string, 'Motorista', 'Revezamento', dataDb, destino, adolescente, cidade, observacoes, horario);
+  try {
+    const dataDb = dataViagem || new Date().toISOString().split('T')[0];
+    const mRes = await client.execute({ sql: "SELECT nome FROM motoristas WHERE id = ?", args: [idViajou] as any[] });
+    
+    if (mRes.rows.length > 0) await salvarNoHistorico(mRes.rows[0].nome as string, 'Motorista', 'Revezamento', dataDb, destino, adolescente, cidade, observacoes, horario);
 
-  await client.execute({ sql: "UPDATE motoristas SET posicao_fila = 2, ultima_viagem = ?, destino_viagem = ? WHERE id = ?", args: [dataDb, destino, idViajou] as any[] });
-  await client.execute({ sql: "UPDATE motoristas SET posicao_fila = 1 WHERE id != ?", args: [idViajou] as any[] });
-  return { success: true };
+    await client.execute({ sql: "UPDATE motoristas SET posicao_fila = 2, ultima_viagem = ?, destino_viagem = ? WHERE id = ?", args: [dataDb, destino, idViajou] as any[] });
+    await client.execute({ sql: "UPDATE motoristas SET posicao_fila = 1 WHERE id != ?", args: [idViajou] as any[] });
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
 }
 
 export async function registrarViagemDupla(plantaoId: number, destino: string, dataViagem?: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
-  const dataDb = dataViagem || new Date().toISOString().split('T')[0];
-  const pRes = await client.execute({ sql: "SELECT nome FROM plantoes WHERE id = ?", args: [plantaoId] as any[] });
-  const nomeEquipe = pRes.rows.length > 0 ? pRes.rows[0].nome as string : 'Desconhecida';
-  const sRes = await client.execute({ sql: "SELECT id, nome, posicao_fila FROM servidores WHERE plantao_id = ? ORDER BY posicao_fila ASC", args: [plantaoId] as any[] });
-  const servidores = sRes.rows;
-  
-  if (servidores.length === 0) return { success: false };
-  if (servidores.length === 1) {
-     await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, destino_viagem = ? WHERE id = ?", args: [dataDb, destino, servidores[0].id] as any[] });
-     await salvarNoHistorico(servidores[0].nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes, horario);
-     return { success: true };
+  try {
+    const dataDb = dataViagem || new Date().toISOString().split('T')[0];
+    const pRes = await client.execute({ sql: "SELECT nome FROM plantoes WHERE id = ?", args: [plantaoId] as any[] });
+    const nomeEquipe = pRes.rows.length > 0 ? pRes.rows[0].nome as string : 'Desconhecida';
+    const sRes = await client.execute({ sql: "SELECT id, nome, posicao_fila FROM servidores WHERE plantao_id = ? ORDER BY posicao_fila ASC", args: [plantaoId] as any[] });
+    const servidores = sRes.rows;
+    
+    if (servidores.length === 0) return { success: false, error: "Nenhum servidor encontrado." };
+    if (servidores.length === 1) {
+       await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, destino_viagem = ? WHERE id = ?", args: [dataDb, destino, servidores[0].id] as any[] });
+       await salvarNoHistorico(servidores[0].nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes, horario);
+       return { success: true };
+    }
+
+    const s1 = servidores[0], s2 = servidores[1], total = servidores.length;
+    await salvarNoHistorico(s1.nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes, horario);
+    await salvarNoHistorico(s2.nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes, horario);
+
+    await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, destino_viagem = ?, posicao_fila = ? WHERE id = ?", args: [dataDb, destino, total - 1, s1.id] as any[] });
+    await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, destino_viagem = ?, posicao_fila = ? WHERE id = ?", args: [dataDb, destino, total, s2.id] as any[] });
+
+    for (let i = 2; i < total; i++) {
+       await client.execute({ sql: "UPDATE servidores SET posicao_fila = ? WHERE id = ?", args: [i - 1, servidores[i].id] as any[] });
+    }
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
   }
-
-  const s1 = servidores[0], s2 = servidores[1], total = servidores.length;
-  await salvarNoHistorico(s1.nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes, horario);
-  await salvarNoHistorico(s2.nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes, horario);
-
-  await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, destino_viagem = ?, posicao_fila = ? WHERE id = ?", args: [dataDb, destino, total - 1, s1.id] as any[] });
-  await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, destino_viagem = ?, posicao_fila = ? WHERE id = ?", args: [dataDb, destino, total, s2.id] as any[] });
-
-  for (let i = 2; i < total; i++) {
-     await client.execute({ sql: "UPDATE servidores SET posicao_fila = ? WHERE id = ?", args: [i - 1, servidores[i].id] as any[] });
-  }
-  return { success: true };
 }
 
 export async function registrarViagem(servidorId: number, plantaoId: number, destino: string, dataViagem?: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
-  const dataDb = dataViagem || new Date().toISOString().split('T')[0];
-  const sRes = await client.execute({ sql: "SELECT s.posicao_fila, s.nome, p.nome as equipe FROM servidores s JOIN plantoes p ON s.plantao_id = p.id WHERE s.id = ?", args: [servidorId] as any[] });
-  if (sRes.rows.length === 0) return { success: false };
-  
-  const posAtual = sRes.rows[0].posicao_fila as number;
-  const nome = sRes.rows[0].nome as string;
-  const equipe = sRes.rows[0].equipe as string;
+  try {
+    const dataDb = dataViagem || new Date().toISOString().split('T')[0];
+    const sRes = await client.execute({ sql: "SELECT s.posicao_fila, s.nome, p.nome as equipe FROM servidores s JOIN plantoes p ON s.plantao_id = p.id WHERE s.id = ?", args: [servidorId] as any[] });
+    if (sRes.rows.length === 0) return { success: false, error: "Servidor não encontrado." };
+    
+    const posAtual = sRes.rows[0].posicao_fila as number;
+    const nome = sRes.rows[0].nome as string;
+    const equipe = sRes.rows[0].equipe as string;
 
-  await salvarNoHistorico(nome, 'Servidor', equipe, dataDb, destino, adolescente, cidade, observacoes, horario);
+    await salvarNoHistorico(nome, 'Servidor', equipe, dataDb, destino, adolescente, cidade, observacoes, horario);
 
-  const maxPosResult = await client.execute({ sql: "SELECT MAX(posicao_fila) as max_pos FROM servidores WHERE plantao_id = ?", args: [plantaoId] as any[] });
-  const maxPos = (maxPosResult.rows[0].max_pos as number) || 1;
+    const maxPosResult = await client.execute({ sql: "SELECT MAX(posicao_fila) as max_pos FROM servidores WHERE plantao_id = ?", args: [plantaoId] as any[] });
+    const maxPos = (maxPosResult.rows[0].max_pos as number) || 1;
 
-  await client.execute({ sql: "UPDATE servidores SET posicao_fila = posicao_fila - 1 WHERE plantao_id = ? AND posicao_fila > ?", args: [plantaoId, posAtual] as any[] });
-  await client.execute({ sql: "UPDATE servidores SET posicao_fila = ?, ultima_viagem = ?, destino_viagem = ? WHERE id = ?", args: [maxPos, dataDb, destino, servidorId] as any[] });
-  return { success: true };
+    await client.execute({ sql: "UPDATE servidores SET posicao_fila = posicao_fila - 1 WHERE plantao_id = ? AND posicao_fila > ?", args: [plantaoId, posAtual] as any[] });
+    await client.execute({ sql: "UPDATE servidores SET posicao_fila = ?, ultima_viagem = ?, destino_viagem = ? WHERE id = ?", args: [maxPos, dataDb, destino, servidorId] as any[] });
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
 }
 
 export async function configurarEscalaAutomatica(plantaoId: number, mes: number, ano: number, tipo: 'par' | 'impar') {

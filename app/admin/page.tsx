@@ -31,14 +31,14 @@ export default function AdminPage() {
 
   // Campos do Modal de Viagem
   const [viagemData, setViagemData] = useState("");
-  const [viagemHora, setViagemHora] = useState(""); // NOVO CAMPO
+  const [viagemHora, setViagemHora] = useState("");
   const [viagemAdolescente, setViagemAdolescente] = useState("");
   const [viagemCidade, setViagemCidade] = useState("");
   const [viagemObservacoes, setViagemObservacoes] = useState("");
   
   const [salvandoViagem, setSalvandoViagem] = useState(false);
   
-  // NOVO ESTADO: Guarda o texto gerado para o WhatsApp da Diretora
+  // Guarda o texto gerado para o WhatsApp da Diretora
   const [relatorioGerado, setRelatorioGerado] = useState<string | null>(null);
 
   const carregar = async () => {
@@ -87,7 +87,6 @@ export default function AdminPage() {
     );
   }
 
-  // --- LÓGICA DE ARRASTAR E SOLTAR ---
   const onDragStart = (e: any, index: number, itemType: string, groupId: number | string) => {
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("itemIndex", index);
@@ -145,27 +144,36 @@ export default function AdminPage() {
   const abrirModalViagem = (tipo: string, id: number, plantaoId?: number, nomeAlvo?: string) => { 
     setModalViagem({ tipo, id, plantaoId, nomeAlvo });
     setViagemData(new Date().toISOString().split('T')[0]);
-    setViagemHora(""); // Limpa a hora
+    setViagemHora(""); 
     setViagemAdolescente(""); 
     setViagemCidade("");
     setViagemObservacoes("");
   };
 
-  // ATUALIZADO: Salva, Gera o Texto Automático e Mostra na Tela
+  // FUNÇÃO ATUALIZADA: Agora captura e mostra o erro exato do SQL!
   const confirmarViagem = async (destino: string) => {
     if (!modalViagem || salvandoViagem) return;
     setSalvandoViagem(true);
 
     try {
+      let result;
+
       if (modalViagem.tipo === 'motorista') {
-        await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+        result = await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
       } else if (modalViagem.tipo === 'dupla') {
-        await registrarViagemDupla(modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+        result = await registrarViagemDupla(modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
       } else if (modalViagem.tipo === 'individual') {
-        await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+        result = await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
       }
       
-      // FORMATAÇÃO DO TEXTO PARA A DIRETORA
+      // Se a resposta retornar sucesso como falso, mostra o erro e trava.
+      if (result && result.success === false) {
+        alert(`❌ ERRO NO BANCO DE DADOS:\n\n${result.error}\n\n⚠️ Provavelmente falta adicionar a coluna 'ultima_viagem' ou 'destino_viagem' no Turso.`);
+        setSalvandoViagem(false);
+        return;
+      }
+      
+      // SUCESSO - FORMATAÇÃO DO TEXTO PARA A DIRETORA
       const [ano, mes, dia] = viagemData.split('-');
       const dataFormatada = `${dia}/${mes}/${ano}`;
       const horaTexto = viagemHora ? ` às ${viagemHora}hs` : '';
@@ -182,14 +190,11 @@ export default function AdminPage() {
       
       msg += `\n💰 *Status:* Diárias para folha suplementar.`;
 
-      // Define a mensagem no estado para exibir na tela
       setRelatorioGerado(msg);
-      
-      // Fecha o modal de registro
       setModalViagem(null); 
       await carregar();
     } catch (error) {
-      alert("❌ Ocorreu um erro ao salvar a viagem. Tente novamente.");
+      alert("❌ Ocorreu um erro crítico na aplicação. Tente novamente.");
     } finally {
       setSalvandoViagem(false);
     }
@@ -233,13 +238,13 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen bg-[#020617] text-slate-300 p-4 md:p-8 font-sans pb-24 relative">
       
-      {/* NOVO: MODAL DE SUCESSO E RESUMO DA DIRETORA */}
+      {/* MODAL DE SUCESSO E RESUMO DA DIRETORA */}
       {relatorioGerado && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
           <div className="bg-slate-900 border border-emerald-500/50 rounded-3xl w-full max-w-md shadow-[0_0_50px_rgba(16,185,129,0.15)] p-8 text-center transform animate-in zoom-in-95 duration-200">
             <div className="text-6xl mb-4 animate-bounce">✅</div>
             <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Viagem Registada!</h3>
-            <p className="text-slate-400 text-sm mb-6">O registo foi salvo no histórico. Abaixo está o resumo gerado automaticamente para você enviar à direção.</p>
+            <p className="text-slate-400 text-sm mb-6">O registo foi salvo no histórico e a data foi atualizada. Abaixo está o resumo gerado para você.</p>
             
             <textarea 
               readOnly
@@ -252,7 +257,7 @@ export default function AdminPage() {
               <button 
                 onClick={() => {
                   navigator.clipboard.writeText(relatorioGerado);
-                  alert("📋 Mensagem copiada com sucesso! Abra o WhatsApp da diretora e cole.");
+                  alert("📋 Mensagem copiada com sucesso! Abra o WhatsApp e cole.");
                   setRelatorioGerado(null);
                 }} 
                 className="flex-[2] bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-emerald-900/50 flex items-center justify-center gap-2"
@@ -462,8 +467,6 @@ export default function AdminPage() {
         <div className="grid grid-cols-1 gap-8">
           {plantoes.map((plantao: any) => {
             const ePortaria = plantao.nome.toLowerCase().includes('portaria');
-            
-            // Logica para saber os nomes da dupla
             const nomeDupla = plantao.servidores.length >= 2 ? `${plantao.servidores[0].nome} e ${plantao.servidores[1].nome}` : 'Dupla Atual';
 
             return (
