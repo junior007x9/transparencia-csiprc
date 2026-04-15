@@ -20,10 +20,14 @@ export default function Home() {
   const [modalHistorico, setModalHistorico] = useState<any | null>(null);
   const [modalHistoricoGeral, setModalHistoricoGeral] = useState(false);
 
+  // NOVOS ESTADOS PARA OS FILTROS
+  const [filtroNome, setFiltroNome] = useState("");
+  const [filtroData, setFiltroData] = useState("");
+
   useEffect(() => {
     async function carregar() {
       const { plantoes, motoristas } = await getDadosCompletos();
-      const relatorio = await getRelatorioViagens(); // Busca o histórico REAL completo
+      const relatorio = await getRelatorioViagens(); 
       setPlantoes(plantoes);
       setMotoristas(motoristas);
       setRelatorioGeral(relatorio);
@@ -41,57 +45,125 @@ export default function Home() {
     );
   }
 
-  // Viagens de Hoje (Baseadas no histórico real)
   const hojeIso = new Date().toISOString().split('T')[0];
   const viagensHoje = relatorioGeral
     .filter(viagem => viagem.data_viagem === hojeIso)
-    .slice(0, 3); // Limita a 3 para não quebrar o layout
+    .slice(0, 3); 
 
   const hojeObj = new Date();
   const diaHoje = hojeObj.getDate().toString().padStart(2, '0');
   const diaHojeSimples = hojeObj.getDate().toString();
 
+  // LÓGICA DE FILTRAGEM DO HISTÓRICO
+  const relatorioFiltrado = relatorioGeral.filter(viagem => {
+    const termoBusca = filtroNome.toLowerCase();
+    
+    // Verifica se o texto digitado bate com o nome do servidor, adolescente ou equipe
+    const matchNome = termoBusca === "" || 
+      (viagem.nome_pessoa && viagem.nome_pessoa.toLowerCase().includes(termoBusca)) ||
+      (viagem.adolescente && viagem.adolescente.toLowerCase().includes(termoBusca)) ||
+      (viagem.equipe && viagem.equipe.toLowerCase().includes(termoBusca));
+
+    // Verifica se a data selecionada bate com a data da viagem
+    const matchData = filtroData === "" || viagem.data_viagem === filtroData;
+
+    return matchNome && matchData;
+  });
+
   return (
     <main className="min-h-screen bg-[#f8fafc] pb-16 font-sans relative overflow-hidden">
       
-      {/* MODAL HISTÓRICO GERAL (AGORA USANDO O HISTÓRICO REAL COMPLETO) */}
+      {/* MODAL HISTÓRICO GERAL COM FILTROS */}
       {modalHistoricoGeral && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-2xl max-h-[85vh] shadow-2xl overflow-hidden border border-white flex flex-col">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-3xl max-h-[85vh] shadow-2xl overflow-hidden border border-white flex flex-col">
             <div className="bg-slate-900 p-6 flex justify-between items-center text-white">
               <div>
                 <h3 className="font-black uppercase tracking-widest text-sm">📜 Histórico Geral de Viagens</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Todas as equipas e motoristas</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Controle de todas as viagens realizadas</p>
               </div>
-              <button onClick={() => setModalHistoricoGeral(false)} className="bg-slate-800 hover:bg-red-500 text-white transition-all p-2 rounded-xl">
+              <button onClick={() => { setModalHistoricoGeral(false); setFiltroNome(""); setFiltroData(""); }} className="bg-slate-800 hover:bg-red-500 text-white transition-all p-2 rounded-xl">
                 <span className="text-xl">✕</span>
               </button>
             </div>
+            
+            {/* ÁREA DE FILTROS */}
+            <div className="bg-slate-50 p-4 border-b border-slate-200 flex flex-col sm:flex-row gap-3 shadow-inner">
+              <div className="flex-1">
+                <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Buscar por Nome / Equipa / Adolescente</label>
+                <input 
+                  type="text" 
+                  placeholder="Digite para buscar..." 
+                  value={filtroNome}
+                  onChange={(e) => setFiltroNome(e.target.value)}
+                  className="w-full mt-1 bg-white border border-slate-300 text-slate-700 px-4 py-2.5 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all text-sm font-medium shadow-sm"
+                />
+              </div>
+              <div className="sm:w-48">
+                <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Filtrar por Data</label>
+                <input 
+                  type="date" 
+                  value={filtroData}
+                  onChange={(e) => setFiltroData(e.target.value)}
+                  className="w-full mt-1 bg-white border border-slate-300 text-slate-700 px-4 py-2.5 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all text-sm font-medium shadow-sm"
+                />
+              </div>
+              {(filtroNome || filtroData) && (
+                <div className="flex items-end">
+                  <button 
+                    onClick={() => { setFiltroNome(""); setFiltroData(""); }}
+                    className="w-full sm:w-auto px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-black text-[10px] uppercase tracking-widest rounded-xl transition-colors"
+                  >
+                    Limpar
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div className="p-4 overflow-y-auto bg-slate-50 flex-1">
               <div className="space-y-3">
-                {relatorioGeral.map((viagem, idx) => (
-                  <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-200 flex items-center justify-between shadow-sm hover:border-indigo-300 transition-colors">
+                {relatorioFiltrado.map((viagem, idx) => (
+                  <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between shadow-sm hover:border-indigo-300 transition-colors gap-4 sm:gap-0">
                     <div className="flex items-center gap-4">
-                      <span className="text-2xl">{viagem.papel === 'Motorista' ? '🚗' : '🛡️'}</span>
+                      <span className="text-2xl flex-shrink-0">{viagem.papel === 'Motorista' ? '🚗' : '🛡️'}</span>
                       <div>
                         <p className="font-black text-slate-800 leading-none mb-1">{viagem.nome_pessoa}</p>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{viagem.equipe}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            {viagem.equipe}
+                          </span>
+                          {viagem.adolescente && (
+                            <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-tighter bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                              👤 {viagem.adolescente}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100 font-black text-[11px]">
-                        📅 {formatarParaBR(viagem.data_viagem)}
+                    <div className="flex flex-col items-start sm:items-end gap-1.5 border-t sm:border-t-0 border-slate-100 pt-3 sm:pt-0">
+                      <span className="bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100 font-black text-[11px] flex items-center gap-1">
+                        <span>📅</span> {formatarParaBR(viagem.data_viagem)} {viagem.horario && <span className="opacity-70 text-[9px] ml-1">{viagem.horario}</span>}
                       </span>
                       {viagem.destino && (
-                        <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${viagem.destino === 'Interior' ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
-                          📍 {viagem.destino} ({viagem.destino === 'Interior' ? 'R$ 320' : 'R$ 640'})
+                        <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${
+                          viagem.destino === 'Interior' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
+                          viagem.destino === 'Gestão' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
+                          'bg-blue-50 text-blue-600 border-blue-200'
+                        }`}>
+                          📍 {viagem.cidade ? `${viagem.cidade} (${viagem.destino})` : viagem.destino} 
+                          {viagem.destino !== 'Gestão' && ` (R$ ${viagem.valor})`}
                         </span>
                       )}
                     </div>
                   </div>
                 ))}
+                
+                {relatorioGeral.length > 0 && relatorioFiltrado.length === 0 && (
+                   <p className="text-center text-slate-400 py-10 font-bold uppercase text-xs tracking-widest bg-white rounded-2xl border border-slate-200 border-dashed">Nenhum resultado encontrado para estes filtros.</p>
+                )}
+                
                 {relatorioGeral.length === 0 && (
-                   <p className="text-center text-slate-400 py-10 font-bold uppercase text-xs tracking-widest">Nenhuma viagem registrada no sistema.</p>
+                   <p className="text-center text-slate-400 py-10 font-bold uppercase text-xs tracking-widest bg-white rounded-2xl border border-slate-200 border-dashed">O histórico está vazio.</p>
                 )}
               </div>
             </div>
@@ -128,8 +200,12 @@ export default function Home() {
                             <span>⏱️</span> {formatarParaBR(s.ultima_viagem)}
                           </span>
                           {s.destino_viagem && (
-                            <span className={`text-[9px] font-bold uppercase ${s.destino_viagem === 'Interior' ? 'text-amber-500' : 'text-blue-500'}`}>
-                               📍 {s.destino_viagem} ({s.destino_viagem === 'Interior' ? 'R$ 320' : 'R$ 640'})
+                            <span className={`text-[9px] font-bold uppercase ${
+                              s.destino_viagem === 'Interior' ? 'text-amber-500' : 
+                              s.destino_viagem === 'Gestão' ? 'text-purple-500' : 
+                              'text-blue-500'
+                            }`}>
+                               📍 {s.destino_viagem}
                             </span>
                           )}
                         </div>
@@ -166,7 +242,7 @@ export default function Home() {
               onClick={() => setModalHistoricoGeral(true)}
               className="bg-slate-900 hover:bg-slate-800 text-white font-black text-[10px] uppercase tracking-[0.2em] px-8 py-4 rounded-2xl shadow-xl transition-all hover:-translate-y-1 flex items-center gap-3 border border-slate-700"
             >
-              <span>📜 Ver Histórico Geral</span>
+              <span>📜 Ver Histórico Geral / Buscar</span>
             </button>
           </div>
 
@@ -188,8 +264,12 @@ export default function Home() {
                       <span className="text-lg">{viagem.papel === 'Motorista' ? '🚗' : '🛡️'}</span> {viagem.equipe}
                     </p>
                     {viagem.destino && (
-                      <span className={`inline-block px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${viagem.destino === 'Interior' ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
-                        📍 {viagem.destino} ({viagem.destino === 'Interior' ? 'R$ 320' : 'R$ 640'})
+                      <span className={`inline-block px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${
+                        viagem.destino === 'Interior' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
+                        viagem.destino === 'Gestão' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
+                        'bg-blue-50 text-blue-600 border-blue-200'
+                      }`}>
+                        📍 {viagem.destino} {viagem.destino !== 'Gestão' && `(R$ ${viagem.valor})`}
                       </span>
                     )}
                   </div>
@@ -222,7 +302,11 @@ export default function Home() {
                           <span>⏱️</span> Última: {m.ultima_viagem ? formatarParaBR(m.ultima_viagem) : 'Sem registo'}
                         </p>
                         {m.destino_viagem && (
-                           <span className={`text-[10px] font-black uppercase tracking-wider ${m.destino_viagem === 'Interior' ? 'text-amber-500' : 'text-blue-500'}`}>
+                           <span className={`text-[10px] font-black uppercase tracking-wider ${
+                             m.destino_viagem === 'Interior' ? 'text-amber-500' : 
+                             m.destino_viagem === 'Gestão' ? 'text-purple-500' : 
+                             'text-blue-500'
+                           }`}>
                              📍 {m.destino_viagem}
                            </span>
                         )}
