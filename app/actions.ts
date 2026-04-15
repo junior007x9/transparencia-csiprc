@@ -42,7 +42,6 @@ export async function excluirViagemHistorico(id: number) {
   return { success: true };
 }
 
-// NOVA FUNÇÃO: Limpar todo o histórico de uma vez
 export async function limparTodoHistorico() {
   await client.execute("DELETE FROM viagens_realizadas");
   return { success: true };
@@ -58,26 +57,27 @@ export async function reordenarFila(tabela: 'servidores' | 'motoristas', idsOrde
   return { success: true };
 }
 
-async function salvarNoHistorico(nome: string, papel: string, equipe: string, data: string, destino: string, adolescente?: string, cidade?: string, observacoes?: string) {
+// Atualizado para receber o Horário
+async function salvarNoHistorico(nome: string, papel: string, equipe: string, data: string, destino: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
   const valor = destino === 'Interior' ? 320.00 : 640.00;
   await client.execute({
-    sql: "INSERT INTO viagens_realizadas (nome_pessoa, papel, equipe, data_viagem, destino, valor, adolescente, cidade, observacoes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    args: [nome, papel, equipe, data, destino, valor, adolescente || null, cidade || null, observacoes || null] as any[]
+    sql: "INSERT INTO viagens_realizadas (nome_pessoa, papel, equipe, data_viagem, destino, valor, adolescente, cidade, observacoes, horario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    args: [nome, papel, equipe, data, destino, valor, adolescente || null, cidade || null, observacoes || null, horario || null] as any[]
   });
 }
 
-export async function registrarViagemMotorista(idViajou: number, destino: string, dataViagem?: string, adolescente?: string, cidade?: string, observacoes?: string) {
+export async function registrarViagemMotorista(idViajou: number, destino: string, dataViagem?: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
   const dataDb = dataViagem || new Date().toISOString().split('T')[0];
   const mRes = await client.execute({ sql: "SELECT nome FROM motoristas WHERE id = ?", args: [idViajou] as any[] });
   
-  if (mRes.rows.length > 0) await salvarNoHistorico(mRes.rows[0].nome as string, 'Motorista', 'Revezamento', dataDb, destino, adolescente, cidade, observacoes);
+  if (mRes.rows.length > 0) await salvarNoHistorico(mRes.rows[0].nome as string, 'Motorista', 'Revezamento', dataDb, destino, adolescente, cidade, observacoes, horario);
 
   await client.execute({ sql: "UPDATE motoristas SET posicao_fila = 2, ultima_viagem = ?, destino_viagem = ? WHERE id = ?", args: [dataDb, destino, idViajou] as any[] });
   await client.execute({ sql: "UPDATE motoristas SET posicao_fila = 1 WHERE id != ?", args: [idViajou] as any[] });
   return { success: true };
 }
 
-export async function registrarViagemDupla(plantaoId: number, destino: string, dataViagem?: string, adolescente?: string, cidade?: string, observacoes?: string) {
+export async function registrarViagemDupla(plantaoId: number, destino: string, dataViagem?: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
   const dataDb = dataViagem || new Date().toISOString().split('T')[0];
   const pRes = await client.execute({ sql: "SELECT nome FROM plantoes WHERE id = ?", args: [plantaoId] as any[] });
   const nomeEquipe = pRes.rows.length > 0 ? pRes.rows[0].nome as string : 'Desconhecida';
@@ -87,13 +87,13 @@ export async function registrarViagemDupla(plantaoId: number, destino: string, d
   if (servidores.length === 0) return { success: false };
   if (servidores.length === 1) {
      await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, destino_viagem = ? WHERE id = ?", args: [dataDb, destino, servidores[0].id] as any[] });
-     await salvarNoHistorico(servidores[0].nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes);
+     await salvarNoHistorico(servidores[0].nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes, horario);
      return { success: true };
   }
 
   const s1 = servidores[0], s2 = servidores[1], total = servidores.length;
-  await salvarNoHistorico(s1.nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes);
-  await salvarNoHistorico(s2.nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes);
+  await salvarNoHistorico(s1.nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes, horario);
+  await salvarNoHistorico(s2.nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes, horario);
 
   await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, destino_viagem = ?, posicao_fila = ? WHERE id = ?", args: [dataDb, destino, total - 1, s1.id] as any[] });
   await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, destino_viagem = ?, posicao_fila = ? WHERE id = ?", args: [dataDb, destino, total, s2.id] as any[] });
@@ -104,7 +104,7 @@ export async function registrarViagemDupla(plantaoId: number, destino: string, d
   return { success: true };
 }
 
-export async function registrarViagem(servidorId: number, plantaoId: number, destino: string, dataViagem?: string, adolescente?: string, cidade?: string, observacoes?: string) {
+export async function registrarViagem(servidorId: number, plantaoId: number, destino: string, dataViagem?: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
   const dataDb = dataViagem || new Date().toISOString().split('T')[0];
   const sRes = await client.execute({ sql: "SELECT s.posicao_fila, s.nome, p.nome as equipe FROM servidores s JOIN plantoes p ON s.plantao_id = p.id WHERE s.id = ?", args: [servidorId] as any[] });
   if (sRes.rows.length === 0) return { success: false };
@@ -113,7 +113,7 @@ export async function registrarViagem(servidorId: number, plantaoId: number, des
   const nome = sRes.rows[0].nome as string;
   const equipe = sRes.rows[0].equipe as string;
 
-  await salvarNoHistorico(nome, 'Servidor', equipe, dataDb, destino, adolescente, cidade, observacoes);
+  await salvarNoHistorico(nome, 'Servidor', equipe, dataDb, destino, adolescente, cidade, observacoes, horario);
 
   const maxPosResult = await client.execute({ sql: "SELECT MAX(posicao_fila) as max_pos FROM servidores WHERE plantao_id = ?", args: [plantaoId] as any[] });
   const maxPos = (maxPosResult.rows[0].max_pos as number) || 1;

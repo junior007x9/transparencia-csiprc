@@ -29,14 +29,17 @@ export default function AdminPage() {
   const [modalRelatorio, setModalRelatorio] = useState(false);
   const [modalFolga, setModalFolga] = useState<any | null>(null);
 
-  // Campos do Modal
+  // Campos do Modal de Viagem
   const [viagemData, setViagemData] = useState("");
+  const [viagemHora, setViagemHora] = useState(""); // NOVO CAMPO
   const [viagemAdolescente, setViagemAdolescente] = useState("");
   const [viagemCidade, setViagemCidade] = useState("");
   const [viagemObservacoes, setViagemObservacoes] = useState("");
   
-  // Estado para bloquear os cliques
   const [salvandoViagem, setSalvandoViagem] = useState(false);
+  
+  // NOVO ESTADO: Guarda o texto gerado para o WhatsApp da Diretora
+  const [relatorioGerado, setRelatorioGerado] = useState<string | null>(null);
 
   const carregar = async () => {
     setLoading(true);
@@ -123,7 +126,6 @@ export default function AdminPage() {
     carregar();
   };
 
-  // --- INTEGRAÇÃO COM WHATSAPP ---
   const handleEditTelefone = async (id: number, tipo: 'servidor' | 'motorista', atual: string, nome: string) => {
     const novo = prompt(`Digite o número de WhatsApp de ${nome} (Apenas números com DDD, ex: 99988887777):`, atual || "");
     if (novo !== null) {
@@ -140,28 +142,50 @@ export default function AdminPage() {
     window.open(url, '_blank');
   };
 
-  // --- OUTRAS FUNÇÕES ---
   const abrirModalViagem = (tipo: string, id: number, plantaoId?: number, nomeAlvo?: string) => { 
     setModalViagem({ tipo, id, plantaoId, nomeAlvo });
     setViagemData(new Date().toISOString().split('T')[0]);
+    setViagemHora(""); // Limpa a hora
     setViagemAdolescente(""); 
     setViagemCidade("");
     setViagemObservacoes("");
   };
 
+  // ATUALIZADO: Salva, Gera o Texto Automático e Mostra na Tela
   const confirmarViagem = async (destino: string) => {
     if (!modalViagem || salvandoViagem) return;
     setSalvandoViagem(true);
 
     try {
       if (modalViagem.tipo === 'motorista') {
-        await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes);
+        await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
       } else if (modalViagem.tipo === 'dupla') {
-        await registrarViagemDupla(modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes);
+        await registrarViagemDupla(modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
       } else if (modalViagem.tipo === 'individual') {
-        await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes);
+        await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
       }
-      alert("✅ Viagem registada e adicionada ao histórico com sucesso!");
+      
+      // FORMATAÇÃO DO TEXTO PARA A DIRETORA
+      const [ano, mes, dia] = viagemData.split('-');
+      const dataFormatada = `${dia}/${mes}/${ano}`;
+      const horaTexto = viagemHora ? ` às ${viagemHora}hs` : '';
+      const local = viagemCidade ? `${viagemCidade} (${destino})` : destino;
+      
+      let msg = `🚐 *COMUNICADO DE VIAGEM - CSIPRC* 🚐\n\n`;
+      msg += `📍 *Destino:* ${local}\n`;
+      msg += `🗓️ *Data:* ${dataFormatada}${horaTexto}\n`;
+      if (viagemAdolescente) msg += `👤 *Adolescente:* ${viagemAdolescente}\n`;
+      
+      msg += `\n👥 *Equipe Escalonada:*\n↳ ${modalViagem.nomeAlvo}\n`;
+      
+      if (viagemObservacoes) msg += `\n📝 *Observações:* ${viagemObservacoes}\n`;
+      
+      msg += `\n💰 *Status:* Diárias para folha suplementar.`;
+
+      // Define a mensagem no estado para exibir na tela
+      setRelatorioGerado(msg);
+      
+      // Fecha o modal de registro
       setModalViagem(null); 
       await carregar();
     } catch (error) {
@@ -171,7 +195,6 @@ export default function AdminPage() {
     }
   };
 
-  // Funções de apagar Histórico
   const handleExcluirRelatorio = async (id: number) => {
     if (confirm("Deseja APAGAR este registo permanentemente do histórico financeiro?")) { await excluirViagemHistorico(id); carregar(); }
   };
@@ -203,7 +226,6 @@ export default function AdminPage() {
 
   if (loading) return <div className="min-h-screen bg-[#020617] flex justify-center items-center"><div className="w-16 h-16 border-4 border-slate-800 border-t-emerald-500 rounded-full animate-spin"></div></div>;
 
-  // DADOS DO DASHBOARD
   const totalGasto = relatorio.reduce((acc, r) => acc + (r.valor || 0), 0);
   const qtdInterior = relatorio.filter(r => r.destino === 'Interior').length;
   const qtdSLZ = relatorio.filter(r => r.destino === 'São Luís').length;
@@ -211,7 +233,38 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen bg-[#020617] text-slate-300 p-4 md:p-8 font-sans pb-24 relative">
       
-      {/* MODAL DE VIAGEM ATUALIZADO */}
+      {/* NOVO: MODAL DE SUCESSO E RESUMO DA DIRETORA */}
+      {relatorioGerado && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <div className="bg-slate-900 border border-emerald-500/50 rounded-3xl w-full max-w-md shadow-[0_0_50px_rgba(16,185,129,0.15)] p-8 text-center transform animate-in zoom-in-95 duration-200">
+            <div className="text-6xl mb-4 animate-bounce">✅</div>
+            <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Viagem Registada!</h3>
+            <p className="text-slate-400 text-sm mb-6">O registo foi salvo no histórico. Abaixo está o resumo gerado automaticamente para você enviar à direção.</p>
+            
+            <textarea 
+              readOnly
+              value={relatorioGerado} 
+              className="w-full bg-slate-950 border border-slate-800 text-emerald-400 font-mono text-xs sm:text-sm p-4 rounded-xl focus:outline-none min-h-[220px] mb-6 resize-none shadow-inner" 
+            />
+
+            <div className="flex gap-3">
+              <button onClick={() => setRelatorioGerado(null)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-colors">Fechar</button>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(relatorioGerado);
+                  alert("📋 Mensagem copiada com sucesso! Abra o WhatsApp da diretora e cole.");
+                  setRelatorioGerado(null);
+                }} 
+                className="flex-[2] bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-emerald-900/50 flex items-center justify-center gap-2"
+              >
+                📋 Copiar Relatório
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE VIAGEM */}
       {modalViagem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl p-6 text-center">
@@ -219,65 +272,38 @@ export default function AdminPage() {
             <p className="text-slate-400 text-sm mb-4">Preencha os dados (pode escolher datas futuras para pré-aviso).</p>
             
             <div className="flex flex-col gap-3 mb-5 text-left max-h-[50vh] overflow-y-auto px-1">
-              <div>
-                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Data da Viagem / Pré-aviso</label>
-                <input 
-                  type="date" 
-                  value={viagemData} 
-                  onChange={(e) => setViagemData(e.target.value)} 
-                  disabled={salvandoViagem}
-                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" 
-                />
+              <div className="flex gap-3">
+                <div className="flex-[2]">
+                  <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Data</label>
+                  <input type="date" value={viagemData} onChange={(e) => setViagemData(e.target.value)} disabled={salvandoViagem} className="w-full bg-slate-950 border border-slate-800 text-white px-3 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Hora (Opc.)</label>
+                  <input type="time" value={viagemHora} onChange={(e) => setViagemHora(e.target.value)} disabled={salvandoViagem} className="w-full bg-slate-950 border border-slate-800 text-white px-3 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" />
+                </div>
               </div>
+
               <div>
                 <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Nome do Adolescente (Opcional)</label>
-                <input 
-                  type="text" 
-                  placeholder="Ex: João da Silva" 
-                  value={viagemAdolescente} 
-                  onChange={(e) => setViagemAdolescente(e.target.value)} 
-                  disabled={salvandoViagem}
-                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" 
-                />
+                <input type="text" placeholder="Ex: João da Silva" value={viagemAdolescente} onChange={(e) => setViagemAdolescente(e.target.value)} disabled={salvandoViagem} className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" />
               </div>
               <div>
                 <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Cidade Destino (Opcional)</label>
-                <input 
-                  type="text" 
-                  placeholder="Ex: Imperatriz" 
-                  value={viagemCidade} 
-                  onChange={(e) => setViagemCidade(e.target.value)} 
-                  disabled={salvandoViagem}
-                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" 
-                />
+                <input type="text" placeholder="Ex: Coelho Neto" value={viagemCidade} onChange={(e) => setViagemCidade(e.target.value)} disabled={salvandoViagem} className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" />
               </div>
               <div>
                 <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Observações (Opcional)</label>
-                <textarea 
-                  placeholder="Alguma informação extra ou nota..." 
-                  value={viagemObservacoes} 
-                  onChange={(e) => setViagemObservacoes(e.target.value)} 
-                  disabled={salvandoViagem}
-                  className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none min-h-[80px] disabled:opacity-50" 
-                />
+                <textarea placeholder="Alguma informação extra ou nota..." value={viagemObservacoes} onChange={(e) => setViagemObservacoes(e.target.value)} disabled={salvandoViagem} className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none min-h-[80px] disabled:opacity-50" />
               </div>
             </div>
 
             <div className="flex flex-col gap-3 mb-6 mt-2">
-              <button 
-                onClick={() => confirmarViagem('Interior')} 
-                disabled={salvandoViagem}
-                className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/50 text-amber-400'}`}
-              >
-                {salvandoViagem ? '⏳ SALVANDO...' : <>📍 Interior <span className="text-xs ml-2 opacity-70">(R$ 320,00)</span></>}
+              <button onClick={() => confirmarViagem('Interior')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/50 text-amber-400'}`}>
+                {salvandoViagem ? '⏳ SALVANDO E GERANDO RELATÓRIO...' : <>📍 Interior <span className="text-xs ml-2 opacity-70">(R$ 320,00)</span></>}
               </button>
               
-              <button 
-                onClick={() => confirmarViagem('São Luís')} 
-                disabled={salvandoViagem}
-                className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 text-blue-400'}`}
-              >
-                {salvandoViagem ? '⏳ SALVANDO...' : <>📍 São Luís <span className="text-xs ml-2 opacity-70">(R$ 640,00)</span></>}
+              <button onClick={() => confirmarViagem('São Luís')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 text-blue-400'}`}>
+                {salvandoViagem ? '⏳ SALVANDO E GERANDO RELATÓRIO...' : <>📍 São Luís <span className="text-xs ml-2 opacity-70">(R$ 640,00)</span></>}
               </button>
             </div>
             <button onClick={() => setModalViagem(null)} disabled={salvandoViagem} className="text-slate-500 hover:text-white uppercase font-bold text-xs tracking-widest disabled:opacity-50">Cancelar</button>
@@ -336,7 +362,7 @@ export default function AdminPage() {
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead>
                   <tr className="text-slate-500 border-b border-slate-800 uppercase font-black text-[10px] tracking-widest">
-                    <th className="p-4">Data</th>
+                    <th className="p-4">Data/Hora</th>
                     <th className="p-4">Nome</th>
                     <th className="p-4">Adolescente</th>
                     <th className="p-4">Cidade</th>
@@ -350,7 +376,10 @@ export default function AdminPage() {
                 <tbody className="divide-y divide-slate-800/40">
                   {relatorio.map((r, i) => (
                     <tr key={r.id} className="hover:bg-slate-800/50 transition-colors">
-                      <td className="p-4 text-slate-400">{formatarParaBR(r.data_viagem)}</td>
+                      <td className="p-4 text-slate-400">
+                        {formatarParaBR(r.data_viagem)}
+                        {r.horario && <span className="text-xs block text-slate-500">{r.horario}</span>}
+                      </td>
                       <td className="p-4 text-white font-bold">{r.nome_pessoa}</td>
                       <td className="p-4 text-slate-300">{r.adolescente || '-'}</td>
                       <td className="p-4 text-slate-300">{r.cidade || '-'}</td>
@@ -404,7 +433,6 @@ export default function AdminPage() {
                     <div className="w-full">
                       <p className="font-black text-lg text-white block">{m.nome}</p>
                       
-                      {/* BOTÕES DE CONTACTO / WHATSAPP (MOTORISTAS) */}
                       <div className="flex flex-wrap items-center gap-2 mt-2">
                         <button onClick={() => handleEditTelefone(m.id, 'motorista', m.telefone, m.nome)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1.5 rounded uppercase font-bold transition-colors">
                           {m.telefone ? '📱 Editar Tel' : '📱 Add Tel'}
@@ -415,7 +443,6 @@ export default function AdminPage() {
                           </button>
                         )}
                       </div>
-
                     </div>
                   </div>
                   {idx === 0 && (
@@ -435,6 +462,10 @@ export default function AdminPage() {
         <div className="grid grid-cols-1 gap-8">
           {plantoes.map((plantao: any) => {
             const ePortaria = plantao.nome.toLowerCase().includes('portaria');
+            
+            // Logica para saber os nomes da dupla
+            const nomeDupla = plantao.servidores.length >= 2 ? `${plantao.servidores[0].nome} e ${plantao.servidores[1].nome}` : 'Dupla Atual';
+
             return (
               <div key={plantao.id} className="bg-slate-900/60 backdrop-blur-xl rounded-[2rem] border border-slate-800/80 overflow-hidden shadow-2xl mb-4">
                 <div className="p-6 lg:p-8 bg-slate-800/20 flex flex-col md:flex-row md:justify-between md:items-center gap-5 border-b border-slate-800/80 relative">
@@ -456,7 +487,7 @@ export default function AdminPage() {
                         <th className="p-4 text-center">Último Destino/Aviso</th>
                         <th className="p-4 text-right pr-8">
                           {!ePortaria && plantao.servidores.length >= 2 && (
-                            <button onClick={() => abrirModalViagem('dupla', 0, plantao.id, 'Dupla Atual')} className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-[0_0_20px_rgba(59,130,246,0.4)]">✈️ Viagem da Dupla</button>
+                            <button onClick={() => abrirModalViagem('dupla', 0, plantao.id, nomeDupla)} className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-[0_0_20px_rgba(59,130,246,0.4)]">✈️ Viagem da Dupla</button>
                           )}
                         </th>
                       </tr>
@@ -480,7 +511,6 @@ export default function AdminPage() {
                           <td className="p-4">
                             <span className="font-black text-[15px] text-white block">{s.nome}</span>
                             
-                            {/* BOTOES DE CONTACTO / WHATSAPP (SERVIDORES) */}
                             <div className="flex flex-wrap items-center gap-2 mt-2">
                               <button onClick={() => handleEditTelefone(s.id, 'servidor', s.telefone, s.nome)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1 rounded uppercase font-bold transition-colors">
                                 {s.telefone ? '📱 Editar Tel' : '📱 Add Tel'}
@@ -494,7 +524,6 @@ export default function AdminPage() {
                               <button onClick={() => handleTrocarPlantao(s.id, plantao.id)} className="text-[9px] text-slate-500 hover:text-slate-300 uppercase font-bold">🔄 Mover</button>
                               <button onClick={() => handleRemoverMembro(s.id, s.nome)} className="text-[9px] text-red-500/70 hover:text-red-400 uppercase font-bold">🗑️ Apagar</button>
                             </div>
-
                           </td>
                           <td className="p-4 text-center">
                             <div className="flex flex-col items-center gap-1">
