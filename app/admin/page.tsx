@@ -15,18 +15,18 @@ const formatarParaBR = (dataString: string | null) => {
   return `${dia}/${mes}/${ano}`;
 };
 
-// FUNÇÃO INTELIGENTE QUE JUNTA O MOTORISTA E A DUPLA NA MESMA VIAGEM
+// AGRUPAMENTO INTELIGENTE PARA A TABELA (Ignora a hora exata para forçar agrupamento por Dia e Local)
 const agruparViagens = (viagens: any[]) => {
   const grupos: Record<string, any> = {};
   
   viagens.forEach(viagem => {
-    // Agrupa se tiverem a mesma data, destino, cidade e horário
-    const key = `${viagem.data_viagem}_${viagem.destino}_${viagem.cidade || ''}_${viagem.horario || ''}`;
+    const cidadeFormatada = viagem.cidade ? viagem.cidade.toLowerCase().trim() : '';
+    const key = `${viagem.data_viagem}_${viagem.destino}_${cidadeFormatada}`;
     
     if (!grupos[key]) {
       grupos[key] = {
         id_referencia: viagem.id, 
-        ids_para_excluir: [], // Guarda todos os IDs pra apagar a viagem toda de uma vez
+        ids_para_excluir: [], 
         data_viagem: viagem.data_viagem,
         destino: viagem.destino,
         cidade: viagem.cidade,
@@ -44,12 +44,18 @@ const agruparViagens = (viagens: any[]) => {
     if (viagem.papel === 'Motorista') {
       grupos[key].motorista = viagem;
     } else {
-      grupos[key].educadores.push(viagem);
+      // Evita duplicatas se registrado mais de uma vez acidentalmente
+      if (!grupos[key].educadores.find((e: any) => e.nome_pessoa === viagem.nome_pessoa)) {
+        grupos[key].educadores.push(viagem);
+      }
     }
     
     grupos[key].valorTotal += (viagem.valor || 0);
+    
     if (viagem.adolescente && !grupos[key].adolescente) grupos[key].adolescente = viagem.adolescente;
     if (viagem.observacoes && !grupos[key].observacoes) grupos[key].observacoes = viagem.observacoes;
+    if (viagem.horario && !grupos[key].horario) grupos[key].horario = viagem.horario;
+    if (viagem.cidade && !grupos[key].cidade) grupos[key].cidade = viagem.cidade;
   });
   
   return Object.values(grupos).sort((a: any, b: any) => {
@@ -80,7 +86,6 @@ export default function AdminPage() {
   const [viagemCidade, setViagemCidade] = useState("");
   const [viagemObservacoes, setViagemObservacoes] = useState("");
   
-  // NOVOS CAMPOS PARA VINCULAR E SALVAR TUDO DE UMA VEZ
   const [motoristaVinculado, setMotoristaVinculado] = useState<string>("");
   const [plantaoVinculado, setPlantaoVinculado] = useState<string>("");
 
@@ -117,17 +122,9 @@ export default function AdminPage() {
           <div className="text-5xl mb-4 animate-bounce">🔐</div>
           <h1 className="text-2xl font-black text-white mb-2 uppercase tracking-widest">Acesso Restrito</h1>
           <p className="text-slate-500 text-xs mb-6 uppercase tracking-widest">Central de Gestão CSIPRC</p>
-          <input 
-            type="password" 
-            placeholder="Digite a senha" 
-            className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-4 rounded-xl mb-3 text-center focus:border-emerald-500 focus:outline-none tracking-widest"
-            value={senhaInput}
-            onChange={(e) => setSenhaInput(e.target.value)}
-          />
+          <input type="password" placeholder="Digite a senha" value={senhaInput} onChange={(e) => setSenhaInput(e.target.value)} className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-4 rounded-xl mb-3 text-center focus:border-emerald-500 focus:outline-none tracking-widest" />
           {loginError && <p className="text-red-400 text-xs font-bold mb-4 animate-pulse">{loginError}</p>}
-          <button type="submit" className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black uppercase tracking-widest py-4 rounded-xl transition-all shadow-lg shadow-emerald-900/50">
-            Entrar no Sistema
-          </button>
+          <button type="submit" className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black uppercase tracking-widest py-4 rounded-xl transition-all shadow-lg shadow-emerald-900/50">Entrar no Sistema</button>
         </form>
       </div>
     );
@@ -194,8 +191,8 @@ export default function AdminPage() {
     setViagemAdolescente(""); 
     setViagemCidade("");
     setViagemObservacoes("");
-    setMotoristaVinculado(""); // Zera na hora de abrir
-    setPlantaoVinculado("");   // Zera na hora de abrir
+    setMotoristaVinculado(""); 
+    setPlantaoVinculado("");   
   };
 
   const confirmarViagem = async (destino: string) => {
@@ -206,13 +203,10 @@ export default function AdminPage() {
       let result;
       let nomesEquipeMensagem = modalViagem.nomeAlvo;
 
-      // SALVA TUDO AO MESMO TEMPO COM OS MESMOS DADOS (Garante o Agrupamento)
       if (modalViagem.tipo === 'motorista') {
         result = await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
-        
-        if (plantaoVinculado) { // Se escolheu uma dupla junto
+        if (plantaoVinculado) { 
           await registrarViagemDupla(Number(plantaoVinculado), destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
-          
           const pEncontrado = plantoes.find(p => p.id === Number(plantaoVinculado));
           if (pEncontrado) {
              const dupla = pEncontrado.servidores.slice(0, 2).map((s:any) => s.nome).join(" e ");
@@ -224,10 +218,8 @@ export default function AdminPage() {
 
       } else if (modalViagem.tipo === 'dupla') {
         result = await registrarViagemDupla(modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
-        
-        if (motoristaVinculado) { // Se escolheu o motorista junto
+        if (motoristaVinculado) { 
            await registrarViagemMotorista(Number(motoristaVinculado), destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
-           
            const mEncontrado = motoristas.find(m => m.id === Number(motoristaVinculado));
            if (mEncontrado) {
               nomesEquipeMensagem = `🚗 ${mEncontrado.nome} (Motorista) \n↳ 🛡️ ${modalViagem.nomeAlvo} (Educadores)`;
@@ -240,7 +232,6 @@ export default function AdminPage() {
         result = await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
         if (motoristaVinculado) {
            await registrarViagemMotorista(Number(motoristaVinculado), destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
-           
            const mEncontrado = motoristas.find(m => m.id === Number(motoristaVinculado));
            if (mEncontrado) {
               nomesEquipeMensagem = `🚗 ${mEncontrado.nome} (Motorista) \n↳ 🛡️ ${modalViagem.nomeAlvo} (Educador)`;
@@ -305,12 +296,9 @@ export default function AdminPage() {
     setRelatorioGerado(msg);
   };
 
-  // EXCLUI TODA A VIAGEM COMPLETA DE UMA SÓ VEZ
   const handleExcluirViagemCompleta = async (ids: number[]) => {
     if (confirm("Deseja APAGAR permanentemente TODO ESSE GRUPO (esta viagem inteira) do histórico?")) { 
-      for(const id of ids) {
-         await excluirViagemHistorico(id); 
-      }
+      for(const id of ids) { await excluirViagemHistorico(id); }
       carregar(); 
     }
   };
@@ -359,24 +347,11 @@ export default function AdminPage() {
             <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Mensagem Pronta!</h3>
             <p className="text-slate-400 text-sm mb-6">Abaixo está o resumo da viagem gerado para você copiar e enviar à direção.</p>
             
-            <textarea 
-              readOnly
-              value={relatorioGerado} 
-              className="w-full bg-slate-950 border border-slate-800 text-emerald-400 font-mono text-xs sm:text-sm p-4 rounded-xl focus:outline-none min-h-[220px] mb-6 resize-none shadow-inner" 
-            />
+            <textarea readOnly value={relatorioGerado} className="w-full bg-slate-950 border border-slate-800 text-emerald-400 font-mono text-xs sm:text-sm p-4 rounded-xl focus:outline-none min-h-[220px] mb-6 resize-none shadow-inner" />
 
             <div className="flex gap-3">
               <button onClick={() => setRelatorioGerado(null)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-colors">Fechar</button>
-              <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(relatorioGerado);
-                  alert("📋 Mensagem copiada com sucesso! Abra o WhatsApp e cole.");
-                  setRelatorioGerado(null);
-                }} 
-                className="flex-[2] bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-emerald-900/50 flex items-center justify-center gap-2"
-              >
-                📋 Copiar Mensagem
-              </button>
+              <button onClick={() => { navigator.clipboard.writeText(relatorioGerado); alert("📋 Mensagem copiada com sucesso! Abra o WhatsApp e cole."); setRelatorioGerado(null); }} className="flex-[2] bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-emerald-900/50 flex items-center justify-center gap-2">📋 Copiar Mensagem</button>
             </div>
           </div>
         </div>
@@ -391,7 +366,6 @@ export default function AdminPage() {
             
             <div className="flex flex-col gap-3 mb-5 text-left max-h-[50vh] overflow-y-auto px-1">
               
-              {/* VINCULAÇÃO INTELIGENTE (Motorista + Dupla) */}
               {modalViagem.tipo === 'motorista' && (
                 <div className="bg-indigo-900/20 border border-indigo-500/30 p-3 rounded-xl mb-2">
                   <label className="text-[10px] uppercase font-black text-indigo-400 ml-1">Vincular Plantão (Dupla) nesta viagem?</label>
@@ -428,7 +402,7 @@ export default function AdminPage() {
               </div>
 
               <div>
-                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Nome do Adolescente (Opcional)</label>
+                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Adolescente (Opcional)</label>
                 <input type="text" placeholder="Ex: João da Silva" value={viagemAdolescente} onChange={(e) => setViagemAdolescente(e.target.value)} disabled={salvandoViagem} className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" />
               </div>
               <div>
@@ -473,19 +447,15 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* MODAL DO RELATÓRIO DE GASTOS */}
+      {/* MODAL DO RELATÓRIO DE GASTOS COM O NOVO VISUAL DE BLOCO ÚNICO */}
       {modalRelatorio && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-7xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
             <div className="bg-slate-950 p-6 flex flex-col sm:flex-row justify-between items-center border-b border-slate-800 gap-4">
               <h3 className="font-black text-xl text-white uppercase tracking-widest">📊 Dashboard Financeiro</h3>
               <div className="flex items-center gap-3">
-                <button onClick={handleLimparTodoHistorico} className="bg-red-900/40 hover:bg-red-600 border border-red-500/50 text-red-100 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all">
-                  🗑️ Apagar Tudo
-                </button>
-                <button onClick={() => setModalRelatorio(false)} className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl font-bold text-xs transition-colors">
-                  ✕ Fechar
-                </button>
+                <button onClick={handleLimparTodoHistorico} className="bg-red-900/40 hover:bg-red-600 border border-red-500/50 text-red-100 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all">🗑️ Apagar Tudo</button>
+                <button onClick={() => setModalRelatorio(false)} className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl font-bold text-xs transition-colors">✕ Fechar</button>
               </div>
             </div>
             
@@ -506,64 +476,68 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <div className="p-4 overflow-y-auto flex-1">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead>
-                  <tr className="text-slate-500 border-b border-slate-800 uppercase font-black text-[10px] tracking-widest">
-                    <th className="p-4">Data/Hora</th>
-                    <th className="p-4">Equipe Escalada (Grupo)</th>
-                    <th className="p-4">Destino / Adolescente</th>
-                    <th className="p-4 text-right">Valor Total Grupo</th>
-                    <th className="p-4 text-center">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/40">
-                  {historicoAgrupado.map((grupo, i) => (
-                    <tr key={i} className="hover:bg-slate-800/50 transition-colors align-top">
-                      <td className="p-4 text-slate-400">
-                        {formatarParaBR(grupo.data_viagem)}
-                        {grupo.horario && <span className="text-xs block text-slate-500">{grupo.horario}</span>}
-                      </td>
-                      
-                      <td className="p-4 text-white whitespace-normal">
-                         <div className="flex flex-col gap-1.5">
-                           {grupo.motorista ? (
-                             <span className="flex items-center gap-2 font-black text-amber-400"><span className="text-lg">🚗</span> {grupo.motorista.nome_pessoa}</span>
-                           ) : (
-                             <span className="text-slate-600 italic text-xs">Sem motorista registrado</span>
-                           )}
-                           
-                           {grupo.educadores.map((ed: any, idx: number) => (
-                              <span key={idx} className="flex items-center gap-2 font-bold text-blue-200"><span className="text-lg">🛡️</span> {ed.nome_pessoa} <span className="text-[9px] text-slate-500 uppercase tracking-widest">({ed.equipe})</span></span>
-                           ))}
-                         </div>
-                      </td>
-                      
-                      <td className="p-4">
-                        <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border mb-2 inline-block ${
-                          grupo.destino === 'Interior' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 
-                          grupo.destino === 'Gestão' ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' : 
-                          'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                        }`}>
-                          📍 {grupo.cidade ? `${grupo.cidade} (${grupo.destino})` : grupo.destino}
+            <div className="p-4 overflow-y-auto flex-1 bg-slate-950/50">
+              <div className="space-y-4">
+                {historicoAgrupado.map((grupo, i) => (
+                  <div key={i} className="bg-slate-900 border border-slate-700/80 p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 hover:border-slate-500 transition-colors">
+                    
+                    <div className="flex-1 flex flex-col gap-3">
+                      <div className="flex items-center gap-3">
+                        <span className="bg-slate-800 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 font-black text-[11px] flex items-center gap-1 w-max">
+                          📅 {formatarParaBR(grupo.data_viagem)} {grupo.horario && `- ${grupo.horario}`}
                         </span>
-                        {grupo.adolescente && <span className="block text-slate-400 text-xs font-bold">👤 {grupo.adolescente}</span>}
-                        {grupo.observacoes && <span className="block text-slate-500 text-[10px] mt-1 italic max-w-[200px] truncate">"{grupo.observacoes}"</span>}
-                      </td>
+                        <span className={`px-2 py-1.5 rounded text-[10px] font-black uppercase tracking-widest border ${
+                            grupo.destino === 'Interior' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 
+                            grupo.destino === 'Gestão' ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' : 
+                            'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                          }`}>
+                            📍 {grupo.cidade ? `${grupo.cidade} (${grupo.destino})` : grupo.destino}
+                        </span>
+                      </div>
                       
-                      <td className="p-4 text-right font-black text-emerald-400">R$ {grupo.valorTotal?.toFixed(2)}</td>
-                      
-                      <td className="p-4 align-middle h-full">
-                        <div className="flex items-center justify-center gap-2">
-                           <button onClick={() => handleVerRelatorioHistorico(grupo)} className="bg-blue-900/30 hover:bg-blue-600 text-blue-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" title="Ver Mensagem Pronta">👁️ Ver</button>
-                           <button onClick={() => handleExcluirViagemCompleta(grupo.ids_para_excluir)} className="bg-red-900/30 hover:bg-red-600 text-red-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" title="Apagar viagem completa">🗑️ Excluir Viagem</button>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+                        <div className="bg-amber-900/10 p-3 rounded-xl border border-amber-500/20">
+                           <span className="text-[10px] font-black uppercase text-amber-500 mb-1 flex items-center gap-1">🚗 Motorista Responsável</span>
+                           <p className="font-black text-white text-sm">{grupo.motorista ? grupo.motorista.nome_pessoa : <span className="text-slate-500 italic font-normal">Sem motorista vinculado</span>}</p>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {historicoAgrupado.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-500">Nenhuma viagem registada no histórico.</td></tr>}
-                </tbody>
-              </table>
+                        
+                        <div className="bg-blue-900/10 p-3 rounded-xl border border-blue-500/20">
+                           <span className="text-[10px] font-black uppercase text-blue-400 mb-1 flex items-center gap-1">🛡️ Equipe Escalada</span>
+                           {grupo.educadores.length > 0 ? (
+                             <div className="flex flex-col gap-1 mt-1">
+                               {grupo.educadores.map((ed: any, idx: number) => (
+                                 <div key={idx} className="flex items-center gap-2">
+                                   <p className="font-black text-white text-sm">{ed.nome_pessoa}</p>
+                                   <span className="text-[8px] bg-slate-800 border border-slate-700 text-slate-400 px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">{ed.equipe}</span>
+                                 </div>
+                               ))}
+                             </div>
+                           ) : (
+                             <span className="text-slate-500 italic text-sm">Sem educadores vinculados</span>
+                           )}
+                        </div>
+                      </div>
+                      
+                      {(grupo.adolescente || grupo.observacoes) && (
+                         <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 mt-1">
+                           {grupo.adolescente && <p className="text-xs text-slate-300 font-bold mb-1">👤 Adolescente: <span className="font-normal">{grupo.adolescente}</span></p>}
+                           {grupo.observacoes && <p className="text-xs text-slate-400 font-medium">📝 Obs: {grupo.observacoes}</p>}
+                         </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex flex-col md:items-end gap-3 w-full md:w-auto border-t border-slate-800 md:border-0 pt-4 md:pt-0">
+                       <span className="text-emerald-400 font-black text-xl bg-emerald-500/10 px-4 py-2 rounded-xl border border-emerald-500/20 block text-center md:text-right">R$ {grupo.valorTotal?.toFixed(2)}</span>
+                       <div className="flex gap-2 w-full">
+                         <button onClick={() => handleVerRelatorioHistorico(grupo)} className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors shadow-lg shadow-blue-900/20">👁️ Gerar MSG</button>
+                         <button onClick={() => handleExcluirViagemCompleta(grupo.ids_para_excluir)} className="flex-1 md:flex-none bg-red-900/40 hover:bg-red-600 text-red-200 hover:text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors border border-red-500/30">🗑️ Excluir Viagem</button>
+                       </div>
+                    </div>
+                    
+                  </div>
+                ))}
+                {historicoAgrupado.length === 0 && <p className="p-8 text-center text-slate-500 border border-slate-800 border-dashed rounded-2xl font-bold uppercase tracking-widest text-xs">Nenhuma viagem registada no histórico.</p>}
+              </div>
             </div>
           </div>
         </div>
@@ -603,22 +577,12 @@ export default function AdminPage() {
                       <p className="font-black text-lg text-white block">{m.nome}</p>
                       
                       <div className="flex flex-wrap items-center gap-2 mt-2">
-                        <button onClick={() => handleEditTelefone(m.id, 'motorista', m.telefone, m.nome)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1.5 rounded uppercase font-bold transition-colors">
-                          {m.telefone ? '📱 Editar Tel' : '📱 Add Tel'}
-                        </button>
-                        {m.telefone && (
-                          <button onClick={() => abrirWhatsApp(m.telefone, m.nome)} className="text-[9px] bg-emerald-900/30 text-emerald-400 border border-emerald-900/50 px-3 py-1.5 rounded uppercase font-black hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1 shadow-sm">
-                            💬 WhatsApp
-                          </button>
-                        )}
+                        <button onClick={() => handleEditTelefone(m.id, 'motorista', m.telefone, m.nome)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1.5 rounded uppercase font-bold transition-colors">{m.telefone ? '📱 Editar Tel' : '📱 Add Tel'}</button>
+                        {m.telefone && <button onClick={() => abrirWhatsApp(m.telefone, m.nome)} className="text-[9px] bg-emerald-900/30 text-emerald-400 border border-emerald-900/50 px-3 py-1.5 rounded uppercase font-black hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1 shadow-sm">💬 WhatsApp</button>}
                       </div>
                     </div>
                   </div>
-                  {idx === 0 && (
-                    <button onClick={() => abrirModalViagem('motorista', m.id, undefined, m.nome)} className="w-full xl:w-auto flex-shrink-0 bg-amber-500 hover:bg-amber-400 text-amber-950 px-5 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.3)] transition-all">
-                      Confirmar Viagem / Pré-aviso
-                    </button>
-                  )}
+                  {idx === 0 && <button onClick={() => abrirModalViagem('motorista', m.id, undefined, m.nome)} className="w-full xl:w-auto flex-shrink-0 bg-amber-500 hover:bg-amber-400 text-amber-950 px-5 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.3)] transition-all">Confirmar Viagem / Pré-aviso</button>}
                 </div>
               ))}
             </div>
@@ -679,14 +643,8 @@ export default function AdminPage() {
                             <span className="font-black text-[15px] text-white block">{s.nome}</span>
                             
                             <div className="flex flex-wrap items-center gap-2 mt-2">
-                              <button onClick={() => handleEditTelefone(s.id, 'servidor', s.telefone, s.nome)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1 rounded uppercase font-bold transition-colors">
-                                {s.telefone ? '📱 Editar Tel' : '📱 Add Tel'}
-                              </button>
-                              {s.telefone && (
-                                <button onClick={() => abrirWhatsApp(s.telefone, s.nome)} className="text-[9px] bg-emerald-900/30 text-emerald-400 border border-emerald-900/50 px-2 py-1 rounded uppercase font-black hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1 shadow-sm">
-                                  💬 WhatsApp
-                                </button>
-                              )}
+                              <button onClick={() => handleEditTelefone(s.id, 'servidor', s.telefone, s.nome)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1 rounded uppercase font-bold transition-colors">{s.telefone ? '📱 Editar Tel' : '📱 Add Tel'}</button>
+                              {s.telefone && <button onClick={() => abrirWhatsApp(s.telefone, s.nome)} className="text-[9px] bg-emerald-900/30 text-emerald-400 border border-emerald-900/50 px-2 py-1 rounded uppercase font-black hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1 shadow-sm">💬 WhatsApp</button>}
                               <span className="w-px h-3 bg-slate-700 mx-1"></span>
                               <button onClick={() => handleTrocarPlantao(s.id, plantao.id)} className="text-[9px] text-slate-500 hover:text-slate-300 uppercase font-bold">🔄 Mover</button>
                               <button onClick={() => handleRemoverMembro(s.id, s.nome)} className="text-[9px] text-red-500/70 hover:text-red-400 uppercase font-bold">🗑️ Apagar</button>
@@ -705,13 +663,7 @@ export default function AdminPage() {
                             {!ePortaria && (
                               <div className="flex flex-col items-center gap-1">
                                 <span className="text-[11px] font-bold text-slate-300">⏱️ {s.ultima_viagem ? formatarParaBR(s.ultima_viagem) : '--/--/----'}</span>
-                                {s.destino_viagem && (
-                                  <span className={`text-[9px] font-black uppercase ${
-                                    s.destino_viagem === 'Interior' ? 'text-amber-400' : 
-                                    s.destino_viagem === 'Gestão' ? 'text-purple-400' : 
-                                    'text-blue-400'
-                                  }`}>📍 {s.destino_viagem}</span>
-                                )}
+                                {s.destino_viagem && <span className={`text-[9px] font-black uppercase ${s.destino_viagem === 'Interior' ? 'text-amber-400' : s.destino_viagem === 'Gestão' ? 'text-purple-400' : 'text-blue-400'}`}>📍 {s.destino_viagem}</span>}
                               </div>
                             )}
                           </td>

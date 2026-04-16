@@ -10,13 +10,14 @@ const formatarParaBR = (dataString: string | null) => {
   return `${dia}/${mes}/${ano}`;
 };
 
-// FUNÇÃO PARA AGRUPAR O HISTÓRICO POR VIAGEM
+// AGRUPAMENTO INTELIGENTE (Agrupa apenas por Data, Destino e Cidade)
 const agruparViagens = (viagens: any[]) => {
   const grupos: Record<string, any> = {};
   
   viagens.forEach(viagem => {
-    // A chave agrupa registros com a mesma data, destino, cidade e horário
-    const key = `${viagem.data_viagem}_${viagem.destino}_${viagem.cidade || ''}_${viagem.horario || ''}`;
+    // Agora o sistema ignora a "hora" ou "observação" para forçar a junção de todo mundo que viajou no mesmo dia para o mesmo lugar
+    const cidadeFormatada = viagem.cidade ? viagem.cidade.toLowerCase().trim() : '';
+    const key = `${viagem.data_viagem}_${viagem.destino}_${cidadeFormatada}`;
     
     if (!grupos[key]) {
       grupos[key] = {
@@ -36,16 +37,21 @@ const agruparViagens = (viagens: any[]) => {
     if (viagem.papel === 'Motorista') {
       grupos[key].motorista = viagem;
     } else {
-      grupos[key].educadores.push(viagem);
+      // Evita duplicar o mesmo educador sem querer
+      if (!grupos[key].educadores.find((e: any) => e.nome_pessoa === viagem.nome_pessoa)) {
+        grupos[key].educadores.push(viagem);
+      }
     }
     
     grupos[key].valorTotal += (viagem.valor || 0);
     
+    // Aproveita as informações adicionais se alguém do grupo tiver preenchido
     if (viagem.adolescente && !grupos[key].adolescente) grupos[key].adolescente = viagem.adolescente;
     if (viagem.observacoes && !grupos[key].observacoes) grupos[key].observacoes = viagem.observacoes;
+    if (viagem.horario && !grupos[key].horario) grupos[key].horario = viagem.horario;
+    if (viagem.cidade && !grupos[key].cidade) grupos[key].cidade = viagem.cidade;
   });
   
-  // Converte para array e ordena da mais recente para a mais antiga
   return Object.values(grupos).sort((a: any, b: any) => {
     const dateA = new Date(a.data_viagem).getTime();
     const dateB = new Date(b.data_viagem).getTime();
@@ -88,7 +94,6 @@ export default function Home() {
     );
   }
 
-  // AGRUPA AS VIAGENS GERAIS
   const viagensAgrupadasGeral = agruparViagens(relatorioGeral);
   const ultimasViagensAgrupadas = viagensAgrupadasGeral.slice(0, 3); 
 
@@ -96,7 +101,6 @@ export default function Home() {
   const diaHoje = hojeObj.getDate().toString().padStart(2, '0');
   const diaHojeSimples = hojeObj.getDate().toString();
 
-  // FILTRA BASEADO NOS GRUPOS (Motorista ou Educador)
   const relatorioFiltrado = viagensAgrupadasGeral.filter(grupo => {
     const termoBusca = filtroNome.toLowerCase();
     
@@ -122,7 +126,7 @@ export default function Home() {
             <div className="bg-slate-900 p-6 flex justify-between items-center text-white">
               <div>
                 <h3 className="font-black uppercase tracking-widest text-sm">📜 Histórico Geral de Viagens</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Organizado por Grupo de Viagem</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Viagens Completas Agrupadas</p>
               </div>
               <button onClick={() => { setModalHistoricoGeral(false); setFiltroNome(""); setFiltroData(""); }} className="bg-slate-800 hover:bg-red-500 text-white transition-all p-2 rounded-xl">
                 <span className="text-xl">✕</span>
@@ -132,31 +136,15 @@ export default function Home() {
             <div className="bg-slate-50 p-4 border-b border-slate-200 flex flex-col sm:flex-row gap-3 shadow-inner">
               <div className="flex-1">
                 <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Buscar por Nome / Equipa / Adolescente</label>
-                <input 
-                  type="text" 
-                  placeholder="Digite para buscar..." 
-                  value={filtroNome}
-                  onChange={(e) => setFiltroNome(e.target.value)}
-                  className="w-full mt-1 bg-white border border-slate-300 text-slate-700 px-4 py-2.5 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all text-sm font-medium shadow-sm"
-                />
+                <input type="text" placeholder="Digite para buscar..." value={filtroNome} onChange={(e) => setFiltroNome(e.target.value)} className="w-full mt-1 bg-white border border-slate-300 text-slate-700 px-4 py-2.5 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all text-sm font-medium shadow-sm" />
               </div>
               <div className="sm:w-48">
                 <label className="text-[10px] font-black uppercase text-slate-500 ml-1 tracking-widest">Filtrar por Data</label>
-                <input 
-                  type="date" 
-                  value={filtroData}
-                  onChange={(e) => setFiltroData(e.target.value)}
-                  className="w-full mt-1 bg-white border border-slate-300 text-slate-700 px-4 py-2.5 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all text-sm font-medium shadow-sm"
-                />
+                <input type="date" value={filtroData} onChange={(e) => setFiltroData(e.target.value)} className="w-full mt-1 bg-white border border-slate-300 text-slate-700 px-4 py-2.5 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all text-sm font-medium shadow-sm" />
               </div>
               {(filtroNome || filtroData) && (
                 <div className="flex items-end">
-                  <button 
-                    onClick={() => { setFiltroNome(""); setFiltroData(""); }}
-                    className="w-full sm:w-auto px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-black text-[10px] uppercase tracking-widest rounded-xl transition-colors"
-                  >
-                    Limpar
-                  </button>
+                  <button onClick={() => { setFiltroNome(""); setFiltroData(""); }} className="w-full sm:w-auto px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-black text-[10px] uppercase tracking-widest rounded-xl transition-colors">Limpar</button>
                 </div>
               )}
             </div>
@@ -187,20 +175,20 @@ export default function Home() {
                        )}
                     </div>
                     
+                    {/* BLOCO ÚNICO MOSTRANDO MOTORISTA E EDUCADORES LADO A LADO */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* Box Motorista */}
-                      <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100/50">
-                         <span className="text-[9px] font-black uppercase text-amber-600/70 mb-1 flex items-center gap-1">🚗 Motorista</span>
-                         <p className="font-bold text-slate-800">{grupo.motorista ? grupo.motorista.nome_pessoa : <span className="text-slate-400 italic font-normal text-xs">Sem motorista vinculado</span>}</p>
+                      <div className="bg-amber-50/80 p-4 rounded-xl border border-amber-100">
+                         <span className="text-[10px] font-black uppercase text-amber-600 mb-1 flex items-center gap-1">🚗 Motorista Responsável</span>
+                         <p className="font-black text-slate-800 text-[15px]">{grupo.motorista ? grupo.motorista.nome_pessoa : <span className="text-slate-400 italic font-normal text-xs">Sem motorista vinculado</span>}</p>
                       </div>
-                      {/* Box Educadores */}
-                      <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100/50">
-                         <span className="text-[9px] font-black uppercase text-blue-600/70 mb-1 flex items-center gap-1">🛡️ Educadores</span>
+                      
+                      <div className="bg-blue-50/80 p-4 rounded-xl border border-blue-100">
+                         <span className="text-[10px] font-black uppercase text-blue-600 mb-1 flex items-center gap-1">🛡️ Equipe Escalada (Educadores)</span>
                          {grupo.educadores.length > 0 ? (
-                           <div className="flex flex-col gap-1">
+                           <div className="flex flex-col gap-1.5 mt-1">
                              {grupo.educadores.map((ed: any, i: number) => (
                                <div key={i} className="flex items-center gap-2">
-                                 <p className="font-bold text-slate-800 text-sm">{ed.nome_pessoa}</p>
+                                 <p className="font-black text-slate-800 text-[15px]">{ed.nome_pessoa}</p>
                                  <span className="text-[8px] bg-white border border-slate-200 text-slate-500 px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">{ed.equipe}</span>
                                </div>
                              ))}
@@ -212,9 +200,9 @@ export default function Home() {
                     </div>
 
                     {grupo.observacoes && (
-                       <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                       <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 mt-2">
                          <span className="text-[9px] font-black uppercase text-slate-400 block mb-1">📝 Observações</span>
-                         <p className="text-xs text-slate-600">{grupo.observacoes}</p>
+                         <p className="text-xs text-slate-600 font-medium">{grupo.observacoes}</p>
                        </div>
                     )}
                   </div>
@@ -233,17 +221,13 @@ export default function Home() {
         </div>
       )}
 
-      {/* MODAL DE HISTÓRICO POR PLANTÃO (Mantido igual) */}
+      {/* MODAL DE HISTÓRICO POR PLANTÃO */}
       {modalHistorico && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity">
           <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden">
             <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-5 flex justify-between items-center text-white">
-              <h3 className="font-black uppercase tracking-widest text-sm flex items-center gap-2">
-                📜 Histórico: {modalHistorico.nome}
-              </h3>
-              <button onClick={() => setModalHistorico(null)} className="text-slate-400 hover:text-white transition-colors p-1 bg-slate-800 rounded-lg">
-                ✕
-              </button>
+              <h3 className="font-black uppercase tracking-widest text-sm flex items-center gap-2">📜 Histórico: {modalHistorico.nome}</h3>
+              <button onClick={() => setModalHistorico(null)} className="text-slate-400 hover:text-white transition-colors p-1 bg-slate-800 rounded-lg">✕</button>
             </div>
             <div className="p-2 max-h-[60vh] overflow-y-auto">
                {modalHistorico.servidores
@@ -252,9 +236,7 @@ export default function Home() {
                   .map((s: any, idx: number) => (
                      <div key={s.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors rounded-xl">
                         <div className="flex items-center gap-3 mb-2 sm:mb-0">
-                          <span className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-black text-xs">
-                            {idx + 1}º
-                          </span>
+                          <span className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-black text-xs">{idx + 1}º</span>
                           <span className="font-black text-slate-700">{s.nome}</span>
                         </div>
                         <div className="flex flex-col items-end ml-11 sm:ml-0 gap-1">
@@ -262,13 +244,7 @@ export default function Home() {
                             <span>⏱️</span> {formatarParaBR(s.ultima_viagem)}
                           </span>
                           {s.destino_viagem && (
-                            <span className={`text-[9px] font-bold uppercase ${
-                              s.destino_viagem === 'Interior' ? 'text-amber-500' : 
-                              s.destino_viagem === 'Gestão' ? 'text-purple-500' : 
-                              'text-blue-500'
-                            }`}>
-                               📍 {s.destino_viagem}
-                            </span>
+                            <span className={`text-[9px] font-bold uppercase ${s.destino_viagem === 'Interior' ? 'text-amber-500' : s.destino_viagem === 'Gestão' ? 'text-purple-500' : 'text-blue-500'}`}>📍 {s.destino_viagem}</span>
                           )}
                         </div>
                      </div>
@@ -284,15 +260,9 @@ export default function Home() {
       
       <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 pt-16 pb-28 px-4 text-center rounded-b-[4rem] shadow-2xl relative z-10 border-b-4 border-emerald-500/50">
         <div className="max-w-3xl mx-auto">
-          <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest mb-6 inline-block shadow-[0_0_15px_rgba(16,185,129,0.2)]">
-            🛡️ Sistema de Escalas
-          </span>
-          <h1 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-slate-400 mb-4 tracking-tighter drop-shadow-md">
-            Portal da Transparência
-          </h1>
-          <p className="text-slate-400 font-medium md:text-xl max-w-2xl mx-auto leading-relaxed">
-            Acompanhe a fila de viagens, controlo de diárias e folgas do CSIPRC em tempo real.
-          </p>
+          <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest mb-6 inline-block shadow-[0_0_15px_rgba(16,185,129,0.2)]">🛡️ Sistema de Escalas</span>
+          <h1 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-slate-400 mb-4 tracking-tighter drop-shadow-md">Portal da Transparência</h1>
+          <p className="text-slate-400 font-medium md:text-xl max-w-2xl mx-auto leading-relaxed">Acompanhe a fila de viagens, controlo de diárias e folgas do CSIPRC em tempo real.</p>
         </div>
       </div>
 
@@ -300,15 +270,12 @@ export default function Home() {
         
         <section className="space-y-4">
           <div className="flex justify-center">
-            <button 
-              onClick={() => setModalHistoricoGeral(true)}
-              className="bg-slate-900 hover:bg-slate-800 text-white font-black text-[10px] uppercase tracking-[0.2em] px-8 py-4 rounded-2xl shadow-xl transition-all hover:-translate-y-1 flex items-center gap-3 border border-slate-700"
-            >
+            <button onClick={() => setModalHistoricoGeral(true)} className="bg-slate-900 hover:bg-slate-800 text-white font-black text-[10px] uppercase tracking-[0.2em] px-8 py-4 rounded-2xl shadow-xl transition-all hover:-translate-y-1 flex items-center gap-3 border border-slate-700">
               <span>📜 Ver Histórico Geral / Buscar</span>
             </button>
           </div>
 
-          {/* TELA DE PREVISÃO MOSTRA AS 3 ÚLTIMAS VIAGENS (AGRUPADAS) */}
+          {/* TELA DE PREVISÃO COM O VISUAL UNIFICADO (Card Único) */}
           {ultimasViagensAgrupadas.length > 0 && (
             <div className="bg-white/90 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-indigo-900/10 border border-white overflow-hidden transform transition duration-500 hover:shadow-indigo-900/20">
               <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 p-5 text-white flex items-center justify-center gap-3">
@@ -319,28 +286,28 @@ export default function Home() {
               <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100 p-2">
                 {ultimasViagensAgrupadas.map((grupo: any, idx: number) => (
                   <div key={idx} className="p-5 flex flex-col hover:bg-slate-50 transition-colors rounded-2xl text-left">
-                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-3 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 w-max flex items-center gap-1.5">
-                      📅 {formatarParaBR(grupo.data_viagem)}
+                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-4 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 w-max flex items-center gap-1.5">
+                      📅 {formatarParaBR(grupo.data_viagem)} {grupo.horario && `- ${grupo.horario}`}
                     </span>
                     
-                    <div className="flex flex-col gap-2 mb-3">
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-3 mb-4 flex-1">
+                      <div className="flex items-center gap-2 bg-amber-50/50 p-2 rounded-lg border border-amber-100/50">
                         <span className="text-lg">🚗</span>
-                        <p className="font-black text-sm text-slate-800">{grupo.motorista ? grupo.motorista.nome_pessoa : 'N/D'}</p>
+                        <p className="font-black text-sm text-slate-800">{grupo.motorista ? grupo.motorista.nome_pessoa : <span className="italic text-slate-400 font-normal">S/ Motorista</span>}</p>
                       </div>
-                      <div className="flex items-start gap-2">
+                      <div className="flex items-start gap-2 bg-blue-50/50 p-2 rounded-lg border border-blue-100/50">
                         <span className="text-lg">🛡️</span>
                         <div className="flex flex-col">
                            {grupo.educadores.map((ed: any, i: number) => (
-                             <p key={i} className="font-black text-sm text-slate-700">{ed.nome_pessoa}</p>
+                             <p key={i} className="font-black text-sm text-slate-800">{ed.nome_pessoa}</p>
                            ))}
-                           {grupo.educadores.length === 0 && <p className="text-xs text-slate-400 italic">Nenhum educador</p>}
+                           {grupo.educadores.length === 0 && <p className="text-xs text-slate-400 italic">S/ Educadores</p>}
                         </div>
                       </div>
                     </div>
 
                     {grupo.destino && (
-                      <span className={`inline-block px-2 py-1 rounded w-max text-[9px] font-black uppercase tracking-widest border ${
+                      <span className={`inline-block px-3 py-1.5 rounded-lg w-max text-[10px] font-black uppercase tracking-widest border ${
                         grupo.destino === 'Interior' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
                         grupo.destino === 'Gestão' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
                         'bg-blue-50 text-blue-600 border-blue-200'
@@ -382,9 +349,7 @@ export default function Home() {
                              m.destino_viagem === 'Interior' ? 'text-amber-500' : 
                              m.destino_viagem === 'Gestão' ? 'text-purple-500' : 
                              'text-blue-500'
-                           }`}>
-                             📍 {m.destino_viagem}
-                           </span>
+                           }`}>📍 {m.destino_viagem}</span>
                         )}
                       </div>
                     </div>
@@ -432,12 +397,8 @@ export default function Home() {
                 </div>
 
                 <div className="bg-slate-50 p-4 border-b border-slate-100 flex gap-2">
-                  <button onClick={() => setPlantaoExpandido(isExpandido ? null : plantao.id)} className="flex-1 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-black text-[9px] uppercase tracking-widest py-3 rounded-xl transition-colors shadow-sm">
-                    {isExpandido ? '▲ Ocultar Fila' : '▼ Ver Fila'}
-                  </button>
-                  <button onClick={() => setModalHistorico(plantao)} className="flex-1 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 text-indigo-700 font-black text-[9px] uppercase tracking-widest py-3 rounded-xl transition-colors shadow-sm">
-                    📜 Histórico
-                  </button>
+                  <button onClick={() => setPlantaoExpandido(isExpandido ? null : plantao.id)} className="flex-1 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-black text-[9px] uppercase tracking-widest py-3 rounded-xl transition-colors shadow-sm">{isExpandido ? '▲ Ocultar Fila' : '▼ Ver Fila'}</button>
+                  <button onClick={() => setModalHistorico(plantao)} className="flex-1 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 text-indigo-700 font-black text-[9px] uppercase tracking-widest py-3 rounded-xl transition-colors shadow-sm">📜 Histórico</button>
                 </div>
                 
                 {isExpandido && (
@@ -451,31 +412,22 @@ export default function Home() {
                               {!ePortaria && (
                                 <div className="relative flex-shrink-0">
                                   {proximo && <div className="absolute inset-0 bg-emerald-400 rounded-xl animate-ping opacity-20"></div>}
-                                  <span className={`relative w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm shadow-sm border ${proximo ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 text-white border-emerald-500/50 shadow-emerald-500/40' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
-                                    {s.posicao_fila}º
-                                  </span>
+                                  <span className={`relative w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm shadow-sm border ${proximo ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 text-white border-emerald-500/50 shadow-emerald-500/40' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>{s.posicao_fila}º</span>
                                 </div>
                               )}
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <p className={`font-black text-[15px] md:text-lg tracking-tight ${proximo ? 'text-emerald-950' : 'text-slate-800'}`}>
-                                    {s.nome}
-                                  </p>
+                                  <p className={`font-black text-[15px] md:text-lg tracking-tight ${proximo ? 'text-emerald-950' : 'text-slate-800'}`}>{s.nome}</p>
                                   {s.is_supervisor === 1 && <span className="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-black uppercase border border-blue-200">Sup</span>}
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-100/50">
-                                    <span>🌴</span> <span className="mt-0.5">{s.data_folga || '--/--'}</span>
-                                  </span>
+                                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-100/50"><span>🌴</span> <span className="mt-0.5">{s.data_folga || '--/--'}</span></span>
                                 </div>
                               </div>
                             </div>
                             {proximo && (
                               <div className="flex-shrink-0 ml-2">
-                                <span className="flex h-3 w-3 relative">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
-                                </span>
+                                <span className="flex h-3 w-3 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span></span>
                               </div>
                             )}
                           </div>
