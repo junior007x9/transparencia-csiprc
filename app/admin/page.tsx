@@ -15,6 +15,50 @@ const formatarParaBR = (dataString: string | null) => {
   return `${dia}/${mes}/${ano}`;
 };
 
+// FUNÇÃO PARA AGRUPAR O HISTÓRICO POR VIAGEM NO DASHBOARD
+const agruparViagens = (viagens: any[]) => {
+  const grupos: Record<string, any> = {};
+  
+  viagens.forEach(viagem => {
+    const key = `${viagem.data_viagem}_${viagem.destino}_${viagem.cidade || ''}_${viagem.horario || ''}`;
+    
+    if (!grupos[key]) {
+      grupos[key] = {
+        id_referencia: viagem.id, 
+        ids_para_excluir: [], // Array de IDs para quando for excluir a viagem toda
+        data_viagem: viagem.data_viagem,
+        destino: viagem.destino,
+        cidade: viagem.cidade,
+        horario: viagem.horario,
+        adolescente: viagem.adolescente,
+        observacoes: viagem.observacoes,
+        motorista: null,
+        educadores: [],
+        valorTotal: 0
+      };
+    }
+    
+    grupos[key].ids_para_excluir.push(viagem.id);
+    
+    if (viagem.papel === 'Motorista') {
+      grupos[key].motorista = viagem;
+    } else {
+      grupos[key].educadores.push(viagem);
+    }
+    
+    grupos[key].valorTotal += (viagem.valor || 0);
+    if (viagem.adolescente && !grupos[key].adolescente) grupos[key].adolescente = viagem.adolescente;
+    if (viagem.observacoes && !grupos[key].observacoes) grupos[key].observacoes = viagem.observacoes;
+  });
+  
+  return Object.values(grupos).sort((a: any, b: any) => {
+    const dateA = new Date(a.data_viagem).getTime();
+    const dateB = new Date(b.data_viagem).getTime();
+    if (dateA !== dateB) return dateB - dateA;
+    return b.id_referencia - a.id_referencia; 
+  });
+};
+
 export default function AdminPage() {
   const [autenticado, setAutenticado] = useState(false);
   const [senhaInput, setSenhaInput] = useState("");
@@ -29,7 +73,6 @@ export default function AdminPage() {
   const [modalRelatorio, setModalRelatorio] = useState(false);
   const [modalFolga, setModalFolga] = useState<any | null>(null);
 
-  // Campos do Modal de Viagem
   const [viagemData, setViagemData] = useState("");
   const [viagemHora, setViagemHora] = useState("");
   const [viagemAdolescente, setViagemAdolescente] = useState("");
@@ -183,7 +226,6 @@ export default function AdminPage() {
       
       if (viagemObservacoes) msg += `\n📝 *Observações:* ${viagemObservacoes}\n`;
       
-      // Ajuste de mensagem caso seja Gestão
       msg += `\n💰 *Status:* ${destino === 'Gestão' ? 'Viagem sem custo (Gestão).' : 'Diárias para folha suplementar.'}`;
 
       setRelatorioGerado(msg);
@@ -196,37 +238,40 @@ export default function AdminPage() {
     }
   };
 
-  const handleVerRelatorioHistorico = (viagemSelecionada: any) => {
-    const companheiros = relatorio.filter(item => 
-      item.data_viagem === viagemSelecionada.data_viagem && 
-      item.destino === viagemSelecionada.destino && 
-      item.cidade === viagemSelecionada.cidade &&
-      item.horario === viagemSelecionada.horario
-    ).map(item => item.nome_pessoa);
+  // AGORA USA O OBJETO AGRUPADO
+  const handleVerRelatorioHistorico = (grupoSelecionado: any) => {
+    const nomesEquipe = [
+      ...(grupoSelecionado.motorista ? [grupoSelecionado.motorista.nome_pessoa] : []),
+      ...grupoSelecionado.educadores.map((e: any) => e.nome_pessoa)
+    ].join(" e ");
 
-    const nomesEquipe = Array.from(new Set(companheiros)).join(" e ");
-
-    const [ano, mes, dia] = (viagemSelecionada.data_viagem || "").split('T')[0].split('-');
+    const [ano, mes, dia] = (grupoSelecionado.data_viagem || "").split('T')[0].split('-');
     const dataFormatada = `${dia}/${mes}/${ano}`;
-    const horaTexto = viagemSelecionada.horario ? ` às ${viagemSelecionada.horario}hs` : '';
-    const local = viagemSelecionada.cidade ? `${viagemSelecionada.cidade} (${viagemSelecionada.destino})` : viagemSelecionada.destino;
+    const horaTexto = grupoSelecionado.horario ? ` às ${grupoSelecionado.horario}hs` : '';
+    const local = grupoSelecionado.cidade ? `${grupoSelecionado.cidade} (${grupoSelecionado.destino})` : grupoSelecionado.destino;
     
     let msg = `🚐 *COMUNICADO DE VIAGEM - CSIPRC* 🚐\n\n`;
     msg += `📍 *Destino:* ${local}\n`;
     msg += `🗓️ *Data:* ${dataFormatada}${horaTexto}\n`;
-    if (viagemSelecionada.adolescente) msg += `👤 *Adolescente:* ${viagemSelecionada.adolescente}\n`;
+    if (grupoSelecionado.adolescente) msg += `👤 *Adolescente:* ${grupoSelecionado.adolescente}\n`;
     
     msg += `\n👥 *Equipe Escalonada:*\n↳ ${nomesEquipe}\n`;
     
-    if (viagemSelecionada.observacoes) msg += `\n📝 *Observações:* ${viagemSelecionada.observacoes}\n`;
+    if (grupoSelecionado.observacoes) msg += `\n📝 *Observações:* ${grupoSelecionado.observacoes}\n`;
     
-    msg += `\n💰 *Status:* ${viagemSelecionada.destino === 'Gestão' ? 'Viagem sem custo (Gestão).' : 'Diárias para folha suplementar.'}`;
+    msg += `\n💰 *Status:* ${grupoSelecionado.destino === 'Gestão' ? 'Viagem sem custo (Gestão).' : 'Diárias para folha suplementar.'}`;
 
     setRelatorioGerado(msg);
   };
 
-  const handleExcluirRelatorio = async (id: number) => {
-    if (confirm("Deseja APAGAR este registo permanentemente do histórico financeiro?")) { await excluirViagemHistorico(id); carregar(); }
+  // APAGA TODOS OS INTEGRANTES DAQUELA VIAGEM
+  const handleExcluirViagemCompleta = async (ids: number[]) => {
+    if (confirm("Deseja APAGAR permanentemente TODO ESSE GRUPO (esta viagem inteira) do histórico?")) { 
+      for(const id of ids) {
+         await excluirViagemHistorico(id); 
+      }
+      carregar(); 
+    }
   };
 
   const handleLimparTodoHistorico = async () => {
@@ -260,10 +305,12 @@ export default function AdminPage() {
   const qtdInterior = relatorio.filter(r => r.destino === 'Interior').length;
   const qtdSLZ = relatorio.filter(r => r.destino === 'São Luís').length;
 
+  const historicoAgrupado = agruparViagens(relatorio);
+
   return (
     <main className="min-h-screen bg-[#020617] text-slate-300 p-4 md:p-8 font-sans pb-24 relative">
       
-      {/* MODAL DE SUCESSO E RESUMO DA DIRETORA */}
+      {/* MODAL DE SUCESSO E RESUMO */}
       {relatorioGerado && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
           <div className="bg-slate-900 border border-emerald-500/50 rounded-3xl w-full max-w-md shadow-[0_0_50px_rgba(16,185,129,0.15)] p-8 text-center transform animate-in zoom-in-95 duration-200">
@@ -336,7 +383,6 @@ export default function AdminPage() {
                 {salvandoViagem ? '⏳ SALVANDO...' : <>📍 São Luís <span className="text-xs ml-2 opacity-70">(R$ 640,00)</span></>}
               </button>
 
-              {/* NOVO BOTÃO DE GESTÃO (ROXO) */}
               <button onClick={() => confirmarViagem('Gestão')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/50 text-purple-400'}`}>
                 {salvandoViagem ? '⏳ SALVANDO...' : <>🏢 Viagem de Gestão <span className="text-xs ml-2 opacity-70">(Sem custo)</span></>}
               </button>
@@ -398,45 +444,56 @@ export default function AdminPage() {
                 <thead>
                   <tr className="text-slate-500 border-b border-slate-800 uppercase font-black text-[10px] tracking-widest">
                     <th className="p-4">Data/Hora</th>
-                    <th className="p-4">Nome</th>
-                    <th className="p-4">Adolescente</th>
-                    <th className="p-4">Cidade</th>
-                    <th className="p-4">Observações</th>
-                    <th className="p-4">Equipa/Papel</th>
-                    <th className="p-4">Destino</th>
-                    <th className="p-4 text-right">Valor Pago</th>
+                    <th className="p-4">Motorista</th>
+                    <th className="p-4">Educadores</th>
+                    <th className="p-4">Destino/Adolescente</th>
+                    <th className="p-4 text-right">Valor Total Grupo</th>
                     <th className="p-4 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/40">
-                  {relatorio.map((r, i) => (
-                    <tr key={r.id} className="hover:bg-slate-800/50 transition-colors">
+                  {historicoAgrupado.map((grupo, i) => (
+                    <tr key={i} className="hover:bg-slate-800/50 transition-colors align-top">
                       <td className="p-4 text-slate-400">
-                        {formatarParaBR(r.data_viagem)}
-                        {r.horario && <span className="text-xs block text-slate-500">{r.horario}</span>}
+                        {formatarParaBR(grupo.data_viagem)}
+                        {grupo.horario && <span className="text-xs block text-slate-500">{grupo.horario}</span>}
                       </td>
-                      <td className="p-4 text-white font-bold">{r.nome_pessoa}</td>
-                      <td className="p-4 text-slate-300">{r.adolescente || '-'}</td>
-                      <td className="p-4 text-slate-300">{r.cidade || '-'}</td>
-                      <td className="p-4 text-slate-400 text-[10px] max-w-[120px] truncate" title={r.observacoes}>{r.observacoes || '-'}</td>
-                      <td className="p-4 text-slate-500 text-xs">{r.equipe} ({r.papel})</td>
+                      <td className="p-4 text-white font-bold">
+                        {grupo.motorista ? (
+                          <span className="flex items-center gap-2">🚗 {grupo.motorista.nome_pessoa}</span>
+                        ) : (
+                          <span className="text-slate-600 italic">N/D</span>
+                        )}
+                      </td>
+                      <td className="p-4 text-slate-300 whitespace-normal">
+                         <div className="flex flex-col gap-1">
+                           {grupo.educadores.map((ed: any, idx: number) => (
+                              <span key={idx} className="flex items-center gap-2">🛡️ {ed.nome_pessoa}</span>
+                           ))}
+                           {grupo.educadores.length === 0 && <span className="text-slate-600 italic">Nenhum</span>}
+                         </div>
+                      </td>
                       <td className="p-4">
-                        <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${
-                          r.destino === 'Interior' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 
-                          r.destino === 'Gestão' ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' : 
+                        <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border mb-2 inline-block ${
+                          grupo.destino === 'Interior' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 
+                          grupo.destino === 'Gestão' ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' : 
                           'bg-blue-500/10 text-blue-400 border-blue-500/30'
                         }`}>
-                          {r.destino}
+                          📍 {grupo.cidade ? `${grupo.cidade} (${grupo.destino})` : grupo.destino}
                         </span>
+                        {grupo.adolescente && <span className="block text-slate-400 text-xs">👤 {grupo.adolescente}</span>}
+                        {grupo.observacoes && <span className="block text-slate-500 text-[10px] mt-1 italic max-w-[200px] truncate">"{grupo.observacoes}"</span>}
                       </td>
-                      <td className="p-4 text-right font-black text-emerald-400">R$ {r.valor?.toFixed(2)}</td>
-                      <td className="p-4 flex items-center justify-center gap-2">
-                        <button onClick={() => handleVerRelatorioHistorico(r)} className="bg-blue-900/30 hover:bg-blue-600 text-blue-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" title="Ver Mensagem Pronta">👁️ Ver</button>
-                        <button onClick={() => handleExcluirRelatorio(r.id)} className="bg-red-900/30 hover:bg-red-600 text-red-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" title="Apagar erro">🗑️ Excluir</button>
+                      <td className="p-4 text-right font-black text-emerald-400">R$ {grupo.valorTotal?.toFixed(2)}</td>
+                      <td className="p-4 h-full align-middle">
+                        <div className="flex items-center justify-center gap-2">
+                           <button onClick={() => handleVerRelatorioHistorico(grupo)} className="bg-blue-900/30 hover:bg-blue-600 text-blue-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" title="Ver Mensagem Pronta">👁️ Ver</button>
+                           <button onClick={() => handleExcluirViagemCompleta(grupo.ids_para_excluir)} className="bg-red-900/30 hover:bg-red-600 text-red-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" title="Apagar viagem completa">🗑️ Excluir Viagem</button>
+                        </div>
                       </td>
                     </tr>
                   ))}
-                  {relatorio.length === 0 && <tr><td colSpan={9} className="p-8 text-center text-slate-500">Nenhuma viagem registada no histórico.</td></tr>}
+                  {historicoAgrupado.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-500">Nenhuma viagem registada no histórico.</td></tr>}
                 </tbody>
               </table>
             </div>

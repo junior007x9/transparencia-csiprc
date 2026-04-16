@@ -10,6 +10,50 @@ const formatarParaBR = (dataString: string | null) => {
   return `${dia}/${mes}/${ano}`;
 };
 
+// FUNÇÃO PARA AGRUPAR O HISTÓRICO POR VIAGEM
+const agruparViagens = (viagens: any[]) => {
+  const grupos: Record<string, any> = {};
+  
+  viagens.forEach(viagem => {
+    // A chave agrupa registros com a mesma data, destino, cidade e horário
+    const key = `${viagem.data_viagem}_${viagem.destino}_${viagem.cidade || ''}_${viagem.horario || ''}`;
+    
+    if (!grupos[key]) {
+      grupos[key] = {
+        id: viagem.id, 
+        data_viagem: viagem.data_viagem,
+        destino: viagem.destino,
+        cidade: viagem.cidade,
+        horario: viagem.horario,
+        adolescente: viagem.adolescente,
+        observacoes: viagem.observacoes,
+        motorista: null,
+        educadores: [],
+        valorTotal: 0
+      };
+    }
+    
+    if (viagem.papel === 'Motorista') {
+      grupos[key].motorista = viagem;
+    } else {
+      grupos[key].educadores.push(viagem);
+    }
+    
+    grupos[key].valorTotal += (viagem.valor || 0);
+    
+    if (viagem.adolescente && !grupos[key].adolescente) grupos[key].adolescente = viagem.adolescente;
+    if (viagem.observacoes && !grupos[key].observacoes) grupos[key].observacoes = viagem.observacoes;
+  });
+  
+  // Converte para array e ordena da mais recente para a mais antiga
+  return Object.values(grupos).sort((a: any, b: any) => {
+    const dateA = new Date(a.data_viagem).getTime();
+    const dateB = new Date(b.data_viagem).getTime();
+    if (dateA !== dateB) return dateB - dateA;
+    return b.id - a.id; 
+  });
+};
+
 export default function Home() {
   const [plantoes, setPlantoes] = useState<any[]>([]);
   const [motoristas, setMotoristas] = useState<any[]>([]);
@@ -44,21 +88,26 @@ export default function Home() {
     );
   }
 
-  // ATUALIZADO: Mostra sempre as últimas 3 viagens registadas, não importa a data
-  const ultimasViagens = relatorioGeral.slice(0, 3); 
+  // AGRUPA AS VIAGENS GERAIS
+  const viagensAgrupadasGeral = agruparViagens(relatorioGeral);
+  const ultimasViagensAgrupadas = viagensAgrupadasGeral.slice(0, 3); 
 
   const hojeObj = new Date();
   const diaHoje = hojeObj.getDate().toString().padStart(2, '0');
   const diaHojeSimples = hojeObj.getDate().toString();
 
-  const relatorioFiltrado = relatorioGeral.filter(viagem => {
+  // FILTRA BASEADO NOS GRUPOS (Motorista ou Educador)
+  const relatorioFiltrado = viagensAgrupadasGeral.filter(grupo => {
     const termoBusca = filtroNome.toLowerCase();
-    const matchNome = termoBusca === "" || 
-      (viagem.nome_pessoa && viagem.nome_pessoa.toLowerCase().includes(termoBusca)) ||
-      (viagem.adolescente && viagem.adolescente.toLowerCase().includes(termoBusca)) ||
-      (viagem.equipe && viagem.equipe.toLowerCase().includes(termoBusca));
+    
+    const matchMotorista = grupo.motorista && grupo.motorista.nome_pessoa.toLowerCase().includes(termoBusca);
+    const matchEducador = grupo.educadores.some((ed: any) => 
+      ed.nome_pessoa.toLowerCase().includes(termoBusca) || ed.equipe.toLowerCase().includes(termoBusca)
+    );
+    const matchAdolescente = grupo.adolescente && grupo.adolescente.toLowerCase().includes(termoBusca);
 
-    const matchData = filtroData === "" || viagem.data_viagem === filtroData;
+    const matchNome = termoBusca === "" || matchMotorista || matchEducador || matchAdolescente;
+    const matchData = filtroData === "" || grupo.data_viagem === filtroData;
 
     return matchNome && matchData;
   });
@@ -69,11 +118,11 @@ export default function Home() {
       {/* MODAL HISTÓRICO GERAL COM FILTROS */}
       {modalHistoricoGeral && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-3xl max-h-[85vh] shadow-2xl overflow-hidden border border-white flex flex-col">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[85vh] shadow-2xl overflow-hidden border border-white flex flex-col">
             <div className="bg-slate-900 p-6 flex justify-between items-center text-white">
               <div>
                 <h3 className="font-black uppercase tracking-widest text-sm">📜 Histórico Geral de Viagens</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Controle de todas as viagens realizadas</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Organizado por Grupo de Viagem</p>
               </div>
               <button onClick={() => { setModalHistoricoGeral(false); setFiltroNome(""); setFiltroData(""); }} className="bg-slate-800 hover:bg-red-500 text-white transition-all p-2 rounded-xl">
                 <span className="text-xl">✕</span>
@@ -113,48 +162,69 @@ export default function Home() {
             </div>
 
             <div className="p-4 overflow-y-auto bg-slate-50 flex-1">
-              <div className="space-y-3">
-                {relatorioFiltrado.map((viagem, idx) => (
-                  <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between shadow-sm hover:border-indigo-300 transition-colors gap-4 sm:gap-0">
-                    <div className="flex items-center gap-4">
-                      <span className="text-2xl flex-shrink-0">{viagem.papel === 'Motorista' ? '🚗' : '🛡️'}</span>
-                      <div>
-                        <p className="font-black text-slate-800 leading-none mb-1">{viagem.nome_pessoa}</p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                            {viagem.equipe}
+              <div className="space-y-4">
+                {relatorioFiltrado.map((grupo, idx) => (
+                  <div key={idx} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all flex flex-col gap-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-3">
+                       <div className="flex flex-col gap-2">
+                          <span className="bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100 font-black text-[11px] flex items-center gap-1 w-max">
+                            📅 {formatarParaBR(grupo.data_viagem)} {grupo.horario && <span className="opacity-70 ml-1">{grupo.horario}</span>}
                           </span>
-                          {viagem.adolescente && (
-                            <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-tighter bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                              👤 {viagem.adolescente}
+                          {grupo.destino && (
+                            <span className={`px-2 py-1 rounded w-max text-[9px] font-black uppercase tracking-widest border ${
+                              grupo.destino === 'Interior' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
+                              grupo.destino === 'Gestão' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
+                              'bg-blue-50 text-blue-600 border-blue-200'
+                            }`}>
+                              📍 {grupo.cidade ? `${grupo.cidade} (${grupo.destino})` : grupo.destino}
                             </span>
                           )}
-                        </div>
+                       </div>
+                       {grupo.adolescente && (
+                         <span className="text-[10px] font-bold text-indigo-500 uppercase bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 flex items-center h-max">
+                           👤 Adolescente: {grupo.adolescente}
+                         </span>
+                       )}
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Box Motorista */}
+                      <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100/50">
+                         <span className="text-[9px] font-black uppercase text-amber-600/70 mb-1 flex items-center gap-1">🚗 Motorista</span>
+                         <p className="font-bold text-slate-800">{grupo.motorista ? grupo.motorista.nome_pessoa : <span className="text-slate-400 italic font-normal text-xs">Sem motorista vinculado</span>}</p>
+                      </div>
+                      {/* Box Educadores */}
+                      <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100/50">
+                         <span className="text-[9px] font-black uppercase text-blue-600/70 mb-1 flex items-center gap-1">🛡️ Educadores</span>
+                         {grupo.educadores.length > 0 ? (
+                           <div className="flex flex-col gap-1">
+                             {grupo.educadores.map((ed: any, i: number) => (
+                               <div key={i} className="flex items-center gap-2">
+                                 <p className="font-bold text-slate-800 text-sm">{ed.nome_pessoa}</p>
+                                 <span className="text-[8px] bg-white border border-slate-200 text-slate-500 px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">{ed.equipe}</span>
+                               </div>
+                             ))}
+                           </div>
+                         ) : (
+                           <span className="text-slate-400 italic text-xs">Sem educadores vinculados</span>
+                         )}
                       </div>
                     </div>
-                    <div className="flex flex-col items-start sm:items-end gap-1.5 border-t sm:border-t-0 border-slate-100 pt-3 sm:pt-0">
-                      <span className="bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100 font-black text-[11px] flex items-center gap-1">
-                        <span>📅</span> {formatarParaBR(viagem.data_viagem)} {viagem.horario && <span className="opacity-70 text-[9px] ml-1">{viagem.horario}</span>}
-                      </span>
-                      {viagem.destino && (
-                        <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${
-                          viagem.destino === 'Interior' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
-                          viagem.destino === 'Gestão' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
-                          'bg-blue-50 text-blue-600 border-blue-200'
-                        }`}>
-                          📍 {viagem.cidade ? `${viagem.cidade} (${viagem.destino})` : viagem.destino} 
-                          {viagem.destino !== 'Gestão' && ` (R$ ${viagem.valor})`}
-                        </span>
-                      )}
-                    </div>
+
+                    {grupo.observacoes && (
+                       <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                         <span className="text-[9px] font-black uppercase text-slate-400 block mb-1">📝 Observações</span>
+                         <p className="text-xs text-slate-600">{grupo.observacoes}</p>
+                       </div>
+                    )}
                   </div>
                 ))}
                 
-                {relatorioGeral.length > 0 && relatorioFiltrado.length === 0 && (
+                {viagensAgrupadasGeral.length > 0 && relatorioFiltrado.length === 0 && (
                    <p className="text-center text-slate-400 py-10 font-bold uppercase text-xs tracking-widest bg-white rounded-2xl border border-slate-200 border-dashed">Nenhum resultado encontrado para estes filtros.</p>
                 )}
                 
-                {relatorioGeral.length === 0 && (
+                {viagensAgrupadasGeral.length === 0 && (
                    <p className="text-center text-slate-400 py-10 font-bold uppercase text-xs tracking-widest bg-white rounded-2xl border border-slate-200 border-dashed">O histórico está vazio.</p>
                 )}
               </div>
@@ -163,7 +233,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* MODAL DE HISTÓRICO POR PLANTÃO */}
+      {/* MODAL DE HISTÓRICO POR PLANTÃO (Mantido igual) */}
       {modalHistorico && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity">
           <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden">
@@ -238,31 +308,44 @@ export default function Home() {
             </button>
           </div>
 
-          {/* ATUALIZADO: TELA DE PREVISÃO AGORA MOSTRA AS 3 ÚLTIMAS SEMPRE */}
-          {ultimasViagens.length > 0 && (
+          {/* TELA DE PREVISÃO MOSTRA AS 3 ÚLTIMAS VIAGENS (AGRUPADAS) */}
+          {ultimasViagensAgrupadas.length > 0 && (
             <div className="bg-white/90 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-indigo-900/10 border border-white overflow-hidden transform transition duration-500 hover:shadow-indigo-900/20">
               <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 p-5 text-white flex items-center justify-center gap-3">
                 <span className="text-3xl animate-bounce">✈️</span>
                 <h3 className="font-black uppercase tracking-widest text-sm drop-shadow-md">Últimas Viagens Registadas</h3>
               </div>
               
-              <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 p-2">
-                {ultimasViagens.map((viagem: any, idx: number) => (
-                  <div key={idx} className="p-5 flex flex-col items-center text-center hover:bg-slate-50 transition-colors rounded-2xl">
-                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 flex items-center gap-1.5">
-                      📅 {formatarParaBR(viagem.data_viagem)}
+              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100 p-2">
+                {ultimasViagensAgrupadas.map((grupo: any, idx: number) => (
+                  <div key={idx} className="p-5 flex flex-col hover:bg-slate-50 transition-colors rounded-2xl text-left">
+                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-3 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 w-max flex items-center gap-1.5">
+                      📅 {formatarParaBR(grupo.data_viagem)}
                     </span>
-                    <p className="font-black text-lg text-slate-800 leading-tight mb-1">{viagem.nome_pessoa}</p>
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                      <span className="text-lg">{viagem.papel === 'Motorista' ? '🚗' : '🛡️'}</span> {viagem.equipe}
-                    </p>
-                    {viagem.destino && (
-                      <span className={`inline-block px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${
-                        viagem.destino === 'Interior' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
-                        viagem.destino === 'Gestão' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
+                    
+                    <div className="flex flex-col gap-2 mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">🚗</span>
+                        <p className="font-black text-sm text-slate-800">{grupo.motorista ? grupo.motorista.nome_pessoa : 'N/D'}</p>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-lg">🛡️</span>
+                        <div className="flex flex-col">
+                           {grupo.educadores.map((ed: any, i: number) => (
+                             <p key={i} className="font-black text-sm text-slate-700">{ed.nome_pessoa}</p>
+                           ))}
+                           {grupo.educadores.length === 0 && <p className="text-xs text-slate-400 italic">Nenhum educador</p>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {grupo.destino && (
+                      <span className={`inline-block px-2 py-1 rounded w-max text-[9px] font-black uppercase tracking-widest border ${
+                        grupo.destino === 'Interior' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
+                        grupo.destino === 'Gestão' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
                         'bg-blue-50 text-blue-600 border-blue-200'
                       }`}>
-                        📍 {viagem.destino} {viagem.destino !== 'Gestão' && `(R$ ${viagem.valor})`}
+                        📍 {grupo.cidade ? grupo.cidade : grupo.destino}
                       </span>
                     )}
                   </div>
