@@ -15,17 +15,18 @@ const formatarParaBR = (dataString: string | null) => {
   return `${dia}/${mes}/${ano}`;
 };
 
-// FUNÇÃO PARA AGRUPAR O HISTÓRICO POR VIAGEM NO DASHBOARD
+// FUNÇÃO INTELIGENTE QUE JUNTA O MOTORISTA E A DUPLA NA MESMA VIAGEM
 const agruparViagens = (viagens: any[]) => {
   const grupos: Record<string, any> = {};
   
   viagens.forEach(viagem => {
+    // Agrupa se tiverem a mesma data, destino, cidade e horário
     const key = `${viagem.data_viagem}_${viagem.destino}_${viagem.cidade || ''}_${viagem.horario || ''}`;
     
     if (!grupos[key]) {
       grupos[key] = {
         id_referencia: viagem.id, 
-        ids_para_excluir: [], // Array de IDs para quando for excluir a viagem toda
+        ids_para_excluir: [], // Guarda todos os IDs pra apagar a viagem toda de uma vez
         data_viagem: viagem.data_viagem,
         destino: viagem.destino,
         cidade: viagem.cidade,
@@ -79,6 +80,10 @@ export default function AdminPage() {
   const [viagemCidade, setViagemCidade] = useState("");
   const [viagemObservacoes, setViagemObservacoes] = useState("");
   
+  // NOVOS CAMPOS PARA VINCULAR E SALVAR TUDO DE UMA VEZ
+  const [motoristaVinculado, setMotoristaVinculado] = useState<string>("");
+  const [plantaoVinculado, setPlantaoVinculado] = useState<string>("");
+
   const [salvandoViagem, setSalvandoViagem] = useState(false);
   const [relatorioGerado, setRelatorioGerado] = useState<string | null>(null);
 
@@ -189,6 +194,8 @@ export default function AdminPage() {
     setViagemAdolescente(""); 
     setViagemCidade("");
     setViagemObservacoes("");
+    setMotoristaVinculado(""); // Zera na hora de abrir
+    setPlantaoVinculado("");   // Zera na hora de abrir
   };
 
   const confirmarViagem = async (destino: string) => {
@@ -197,17 +204,54 @@ export default function AdminPage() {
 
     try {
       let result;
+      let nomesEquipeMensagem = modalViagem.nomeAlvo;
 
+      // SALVA TUDO AO MESMO TEMPO COM OS MESMOS DADOS (Garante o Agrupamento)
       if (modalViagem.tipo === 'motorista') {
         result = await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+        
+        if (plantaoVinculado) { // Se escolheu uma dupla junto
+          await registrarViagemDupla(Number(plantaoVinculado), destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+          
+          const pEncontrado = plantoes.find(p => p.id === Number(plantaoVinculado));
+          if (pEncontrado) {
+             const dupla = pEncontrado.servidores.slice(0, 2).map((s:any) => s.nome).join(" e ");
+             nomesEquipeMensagem = `🚗 ${modalViagem.nomeAlvo} (Motorista) \n↳ 🛡️ ${dupla} (Educadores)`;
+          }
+        } else {
+           nomesEquipeMensagem = `🚗 ${modalViagem.nomeAlvo} (Motorista)`;
+        }
+
       } else if (modalViagem.tipo === 'dupla') {
         result = await registrarViagemDupla(modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+        
+        if (motoristaVinculado) { // Se escolheu o motorista junto
+           await registrarViagemMotorista(Number(motoristaVinculado), destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+           
+           const mEncontrado = motoristas.find(m => m.id === Number(motoristaVinculado));
+           if (mEncontrado) {
+              nomesEquipeMensagem = `🚗 ${mEncontrado.nome} (Motorista) \n↳ 🛡️ ${modalViagem.nomeAlvo} (Educadores)`;
+           }
+        } else {
+           nomesEquipeMensagem = `🛡️ ${modalViagem.nomeAlvo} (Educadores)`;
+        }
+
       } else if (modalViagem.tipo === 'individual') {
         result = await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+        if (motoristaVinculado) {
+           await registrarViagemMotorista(Number(motoristaVinculado), destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+           
+           const mEncontrado = motoristas.find(m => m.id === Number(motoristaVinculado));
+           if (mEncontrado) {
+              nomesEquipeMensagem = `🚗 ${mEncontrado.nome} (Motorista) \n↳ 🛡️ ${modalViagem.nomeAlvo} (Educador)`;
+           }
+        } else {
+           nomesEquipeMensagem = `🛡️ ${modalViagem.nomeAlvo} (Educador)`;
+        }
       }
       
       if (result && result.success === false) {
-        alert(`❌ ERRO NO BANCO DE DADOS:\n\n${result.error}\n\n⚠️ Provavelmente falta adicionar a coluna 'ultima_viagem' ou 'destino_viagem' no Turso.`);
+        alert(`❌ ERRO NO BANCO DE DADOS:\n\n${result.error}`);
         setSalvandoViagem(false);
         return;
       }
@@ -222,10 +266,9 @@ export default function AdminPage() {
       msg += `🗓️ *Data:* ${dataFormatada}${horaTexto}\n`;
       if (viagemAdolescente) msg += `👤 *Adolescente:* ${viagemAdolescente}\n`;
       
-      msg += `\n👥 *Equipe Escalonada:*\n↳ ${modalViagem.nomeAlvo}\n`;
+      msg += `\n👥 *Equipe Escalonada:*\n↳ ${nomesEquipeMensagem}\n`;
       
       if (viagemObservacoes) msg += `\n📝 *Observações:* ${viagemObservacoes}\n`;
-      
       msg += `\n💰 *Status:* ${destino === 'Gestão' ? 'Viagem sem custo (Gestão).' : 'Diárias para folha suplementar.'}`;
 
       setRelatorioGerado(msg);
@@ -238,12 +281,11 @@ export default function AdminPage() {
     }
   };
 
-  // AGORA USA O OBJETO AGRUPADO
   const handleVerRelatorioHistorico = (grupoSelecionado: any) => {
     const nomesEquipe = [
-      ...(grupoSelecionado.motorista ? [grupoSelecionado.motorista.nome_pessoa] : []),
-      ...grupoSelecionado.educadores.map((e: any) => e.nome_pessoa)
-    ].join(" e ");
+      ...(grupoSelecionado.motorista ? [`🚗 ${grupoSelecionado.motorista.nome_pessoa} (Motorista)`] : []),
+      ...(grupoSelecionado.educadores.length > 0 ? [`🛡️ ${grupoSelecionado.educadores.map((e: any) => e.nome_pessoa).join(" e ")} (Educadores)`] : [])
+    ].join("\n↳ ");
 
     const [ano, mes, dia] = (grupoSelecionado.data_viagem || "").split('T')[0].split('-');
     const dataFormatada = `${dia}/${mes}/${ano}`;
@@ -258,13 +300,12 @@ export default function AdminPage() {
     msg += `\n👥 *Equipe Escalonada:*\n↳ ${nomesEquipe}\n`;
     
     if (grupoSelecionado.observacoes) msg += `\n📝 *Observações:* ${grupoSelecionado.observacoes}\n`;
-    
     msg += `\n💰 *Status:* ${grupoSelecionado.destino === 'Gestão' ? 'Viagem sem custo (Gestão).' : 'Diárias para folha suplementar.'}`;
 
     setRelatorioGerado(msg);
   };
 
-  // APAGA TODOS OS INTEGRANTES DAQUELA VIAGEM
+  // EXCLUI TODA A VIAGEM COMPLETA DE UMA SÓ VEZ
   const handleExcluirViagemCompleta = async (ids: number[]) => {
     if (confirm("Deseja APAGAR permanentemente TODO ESSE GRUPO (esta viagem inteira) do histórico?")) { 
       for(const id of ids) {
@@ -341,14 +382,40 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* MODAL DE VIAGEM */}
+      {/* MODAL DE VIAGEM UNIFICADO */}
       {modalViagem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl p-6 text-center">
-            <h3 className="text-xl font-black text-white mb-2 uppercase tracking-wide">Registrar Viagem {modalViagem.nomeAlvo ? `- ${modalViagem.nomeAlvo}` : ''}</h3>
-            <p className="text-slate-400 text-sm mb-4">Preencha os dados (pode escolher datas futuras para pré-aviso).</p>
+            <h3 className="text-xl font-black text-white mb-2 uppercase tracking-wide">Registrar Viagem Completa</h3>
+            <p className="text-emerald-400/80 font-bold text-xs mb-4">Vincule os escalados abaixo para salvar todos juntos.</p>
             
             <div className="flex flex-col gap-3 mb-5 text-left max-h-[50vh] overflow-y-auto px-1">
+              
+              {/* VINCULAÇÃO INTELIGENTE (Motorista + Dupla) */}
+              {modalViagem.tipo === 'motorista' && (
+                <div className="bg-indigo-900/20 border border-indigo-500/30 p-3 rounded-xl mb-2">
+                  <label className="text-[10px] uppercase font-black text-indigo-400 ml-1">Vincular Plantão (Dupla) nesta viagem?</label>
+                  <select value={plantaoVinculado} onChange={e => setPlantaoVinculado(e.target.value)} disabled={salvandoViagem} className="w-full bg-slate-950 border border-indigo-800 text-white px-3 py-2.5 rounded-xl focus:border-indigo-500 focus:outline-none disabled:opacity-50 mt-1">
+                    <option value="">Não, salvar apenas o Motorista</option>
+                    {plantoes.map(p => !p.nome.toLowerCase().includes('portaria') && (
+                      <option key={p.id} value={p.id}>🛡️ Equipe: {p.nome} (Próximos)</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {(modalViagem.tipo === 'dupla' || modalViagem.tipo === 'individual') && (
+                <div className="bg-amber-900/20 border border-amber-500/30 p-3 rounded-xl mb-2">
+                  <label className="text-[10px] uppercase font-black text-amber-500 ml-1">Vincular Motorista nesta viagem?</label>
+                  <select value={motoristaVinculado} onChange={e => setMotoristaVinculado(e.target.value)} disabled={salvandoViagem} className="w-full bg-slate-950 border border-amber-800 text-white px-3 py-2.5 rounded-xl focus:border-amber-500 focus:outline-none disabled:opacity-50 mt-1">
+                    <option value="">Não, salvar apenas a equipe</option>
+                    {motoristas.map((m, idx) => (
+                      <option key={m.id} value={m.id}>🚗 {m.nome} (Na vez: {idx + 1}º)</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="flex gap-3">
                 <div className="flex-[2]">
                   <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Data</label>
@@ -444,9 +511,8 @@ export default function AdminPage() {
                 <thead>
                   <tr className="text-slate-500 border-b border-slate-800 uppercase font-black text-[10px] tracking-widest">
                     <th className="p-4">Data/Hora</th>
-                    <th className="p-4">Motorista</th>
-                    <th className="p-4">Educadores</th>
-                    <th className="p-4">Destino/Adolescente</th>
+                    <th className="p-4">Equipe Escalada (Grupo)</th>
+                    <th className="p-4">Destino / Adolescente</th>
                     <th className="p-4 text-right">Valor Total Grupo</th>
                     <th className="p-4 text-center">Ações</th>
                   </tr>
@@ -458,21 +524,21 @@ export default function AdminPage() {
                         {formatarParaBR(grupo.data_viagem)}
                         {grupo.horario && <span className="text-xs block text-slate-500">{grupo.horario}</span>}
                       </td>
-                      <td className="p-4 text-white font-bold">
-                        {grupo.motorista ? (
-                          <span className="flex items-center gap-2">🚗 {grupo.motorista.nome_pessoa}</span>
-                        ) : (
-                          <span className="text-slate-600 italic">N/D</span>
-                        )}
-                      </td>
-                      <td className="p-4 text-slate-300 whitespace-normal">
-                         <div className="flex flex-col gap-1">
+                      
+                      <td className="p-4 text-white whitespace-normal">
+                         <div className="flex flex-col gap-1.5">
+                           {grupo.motorista ? (
+                             <span className="flex items-center gap-2 font-black text-amber-400"><span className="text-lg">🚗</span> {grupo.motorista.nome_pessoa}</span>
+                           ) : (
+                             <span className="text-slate-600 italic text-xs">Sem motorista registrado</span>
+                           )}
+                           
                            {grupo.educadores.map((ed: any, idx: number) => (
-                              <span key={idx} className="flex items-center gap-2">🛡️ {ed.nome_pessoa}</span>
+                              <span key={idx} className="flex items-center gap-2 font-bold text-blue-200"><span className="text-lg">🛡️</span> {ed.nome_pessoa} <span className="text-[9px] text-slate-500 uppercase tracking-widest">({ed.equipe})</span></span>
                            ))}
-                           {grupo.educadores.length === 0 && <span className="text-slate-600 italic">Nenhum</span>}
                          </div>
                       </td>
+                      
                       <td className="p-4">
                         <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border mb-2 inline-block ${
                           grupo.destino === 'Interior' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 
@@ -481,11 +547,13 @@ export default function AdminPage() {
                         }`}>
                           📍 {grupo.cidade ? `${grupo.cidade} (${grupo.destino})` : grupo.destino}
                         </span>
-                        {grupo.adolescente && <span className="block text-slate-400 text-xs">👤 {grupo.adolescente}</span>}
+                        {grupo.adolescente && <span className="block text-slate-400 text-xs font-bold">👤 {grupo.adolescente}</span>}
                         {grupo.observacoes && <span className="block text-slate-500 text-[10px] mt-1 italic max-w-[200px] truncate">"{grupo.observacoes}"</span>}
                       </td>
+                      
                       <td className="p-4 text-right font-black text-emerald-400">R$ {grupo.valorTotal?.toFixed(2)}</td>
-                      <td className="p-4 h-full align-middle">
+                      
+                      <td className="p-4 align-middle h-full">
                         <div className="flex items-center justify-center gap-2">
                            <button onClick={() => handleVerRelatorioHistorico(grupo)} className="bg-blue-900/30 hover:bg-blue-600 text-blue-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" title="Ver Mensagem Pronta">👁️ Ver</button>
                            <button onClick={() => handleExcluirViagemCompleta(grupo.ids_para_excluir)} className="bg-red-900/30 hover:bg-red-600 text-red-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors" title="Apagar viagem completa">🗑️ Excluir Viagem</button>
@@ -493,7 +561,7 @@ export default function AdminPage() {
                       </td>
                     </tr>
                   ))}
-                  {historicoAgrupado.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-500">Nenhuma viagem registada no histórico.</td></tr>}
+                  {historicoAgrupado.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-500">Nenhuma viagem registada no histórico.</td></tr>}
                 </tbody>
               </table>
             </div>
