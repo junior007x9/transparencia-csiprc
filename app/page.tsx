@@ -10,6 +10,21 @@ const formatarParaBR = (dataString: string | null) => {
   return `${dia}/${mes}/${ano}`;
 };
 
+// FUNÇÃO DOS ÍCONES INTELIGENTES
+const getIconePorPapel = (papel: string) => {
+  if (!papel) return '🛡️';
+  const p = papel.toLowerCase();
+  if (p.includes('motorista')) return '🚗';
+  if (p.includes('social') || p.includes('assistente')) return '🤝';
+  if (p.includes('psic')) return '🧠';
+  if (p.includes('enferm') || p.includes('saúde') || p.includes('med')) return '💉';
+  if (p.includes('pedagog')) return '📚';
+  if (p.includes('coord') || p.includes('diret') || p.includes('gest')) return '👔';
+  if (p.includes('admin')) return '💻';
+  if (p.includes('educador') || p.includes('servidor')) return '🛡️';
+  return '🛠️'; // default tecnico
+};
+
 // AGRUPAMENTO INTELIGENTE (Agrupa apenas por Data, Destino e Cidade)
 const agruparViagens = (viagens: any[]) => {
   const grupos: Record<string, any> = {};
@@ -37,7 +52,7 @@ const agruparViagens = (viagens: any[]) => {
     if (viagem.papel === 'Motorista') {
       grupos[key].motorista = viagem;
     } else {
-      // Evita duplicar o mesmo educador sem querer
+      // Evita duplicar a mesma pessoa sem querer
       if (!grupos[key].educadores.find((e: any) => e.nome_pessoa === viagem.nome_pessoa)) {
         grupos[key].educadores.push(viagem);
       }
@@ -63,6 +78,7 @@ const agruparViagens = (viagens: any[]) => {
 export default function Home() {
   const [plantoes, setPlantoes] = useState<any[]>([]);
   const [motoristas, setMotoristas] = useState<any[]>([]);
+  const [equipeTecnica, setEquipeTecnica] = useState<any[]>([]);
   const [relatorioGeral, setRelatorioGeral] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -75,14 +91,18 @@ export default function Home() {
 
   useEffect(() => {
     async function carregar() {
-      const { plantoes, motoristas } = await getDadosCompletos();
+      const { plantoes, motoristas, equipeTecnica } = await getDadosCompletos();
       const relatorio = await getRelatorioViagens(); 
       setPlantoes(plantoes);
       setMotoristas(motoristas);
+      setEquipeTecnica(equipeTecnica || []);
       setRelatorioGeral(relatorio);
       setLoading(false);
     }
     carregar();
+    // Atualiza automaticamente a cada 30 segundos
+    const intervalo = setInterval(carregar, 30000);
+    return () => clearInterval(intervalo);
   }, []);
 
   if (loading) {
@@ -161,7 +181,7 @@ export default function Home() {
                           {grupo.destino && (
                             <span className={`px-2 py-1 rounded w-max text-[9px] font-black uppercase tracking-widest border ${
                               grupo.destino === 'Interior' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
-                              grupo.destino === 'Gestão' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
+                              grupo.destino === 'Viagem SEI' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
                               'bg-blue-50 text-blue-600 border-blue-200'
                             }`}>
                               📍 {grupo.cidade ? `${grupo.cidade} (${grupo.destino})` : grupo.destino}
@@ -175,7 +195,7 @@ export default function Home() {
                        )}
                     </div>
                     
-                    {/* BLOCO ÚNICO MOSTRANDO MOTORISTA E EDUCADORES LADO A LADO */}
+                    {/* BLOCO ÚNICO MOSTRANDO MOTORISTA E EQUIPE LADO A LADO */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="bg-amber-50/80 p-4 rounded-xl border border-amber-100">
                          <span className="text-[10px] font-black uppercase text-amber-600 mb-1 flex items-center gap-1">🚗 Motorista Responsável</span>
@@ -183,18 +203,24 @@ export default function Home() {
                       </div>
                       
                       <div className="bg-blue-50/80 p-4 rounded-xl border border-blue-100">
-                         <span className="text-[10px] font-black uppercase text-blue-600 mb-1 flex items-center gap-1">🛡️ Equipe Escalada (Educadores)</span>
+                         <span className="text-[10px] font-black uppercase text-blue-600 mb-2 flex items-center gap-1">👥 Equipe Escalada</span>
                          {grupo.educadores.length > 0 ? (
-                           <div className="flex flex-col gap-1.5 mt-1">
-                             {grupo.educadores.map((ed: any, i: number) => (
-                               <div key={i} className="flex items-center gap-2">
-                                 <p className="font-black text-slate-800 text-[15px]">{ed.nome_pessoa}</p>
-                                 <span className="text-[8px] bg-white border border-slate-200 text-slate-500 px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">{ed.equipe}</span>
-                               </div>
-                             ))}
+                           <div className="flex flex-col gap-2 mt-1">
+                             {grupo.educadores.map((ed: any, i: number) => {
+                               const funcao = ed.equipe === 'Equipe Técnica' ? ed.papel : 'Educador';
+                               return (
+                                 <div key={i} className="flex items-center gap-2">
+                                   <span className="text-xl">{getIconePorPapel(funcao)}</span>
+                                   <div>
+                                     <p className="font-black text-slate-800 text-[15px] leading-none">{ed.nome_pessoa}</p>
+                                     <span className="text-[9px] text-slate-500 font-bold uppercase tracking-tighter">{funcao}</span>
+                                   </div>
+                                 </div>
+                               );
+                             })}
                            </div>
                          ) : (
-                           <span className="text-slate-400 italic text-xs">Sem educadores vinculados</span>
+                           <span className="text-slate-400 italic text-xs">Sem equipe vinculada</span>
                          )}
                       </div>
                     </div>
@@ -202,7 +228,7 @@ export default function Home() {
                     {grupo.observacoes && (
                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 mt-2">
                          <span className="text-[9px] font-black uppercase text-slate-400 block mb-1">📝 Observações</span>
-                         <p className="text-xs text-slate-600 font-medium">{grupo.observacoes}</p>
+                         <p className="text-xs text-slate-600 font-medium whitespace-pre-wrap">{grupo.observacoes}</p>
                        </div>
                     )}
                   </div>
@@ -244,7 +270,7 @@ export default function Home() {
                             <span>⏱️</span> {formatarParaBR(s.ultima_viagem)}
                           </span>
                           {s.destino_viagem && (
-                            <span className={`text-[9px] font-bold uppercase ${s.destino_viagem === 'Interior' ? 'text-amber-500' : s.destino_viagem === 'Gestão' ? 'text-purple-500' : 'text-blue-500'}`}>📍 {s.destino_viagem}</span>
+                            <span className={`text-[9px] font-bold uppercase ${s.destino_viagem === 'Interior' ? 'text-amber-500' : s.destino_viagem === 'Viagem SEI' ? 'text-purple-500' : 'text-blue-500'}`}>📍 {s.destino_viagem}</span>
                           )}
                         </div>
                      </div>
@@ -295,13 +321,22 @@ export default function Home() {
                         <span className="text-lg">🚗</span>
                         <p className="font-black text-sm text-slate-800">{grupo.motorista ? grupo.motorista.nome_pessoa : <span className="italic text-slate-400 font-normal">S/ Motorista</span>}</p>
                       </div>
-                      <div className="flex items-start gap-2 bg-blue-50/50 p-2 rounded-lg border border-blue-100/50">
-                        <span className="text-lg">🛡️</span>
-                        <div className="flex flex-col">
-                           {grupo.educadores.map((ed: any, i: number) => (
-                             <p key={i} className="font-black text-sm text-slate-800">{ed.nome_pessoa}</p>
-                           ))}
-                           {grupo.educadores.length === 0 && <p className="text-xs text-slate-400 italic">S/ Educadores</p>}
+                      
+                      <div className="flex items-start gap-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100/50">
+                        <div className="flex flex-col gap-2">
+                           {grupo.educadores.map((ed: any, i: number) => {
+                             const funcao = ed.equipe === 'Equipe Técnica' ? ed.papel : 'Educador';
+                             return (
+                               <div key={i} className="flex items-center gap-2">
+                                 <span className="text-lg">{getIconePorPapel(funcao)}</span>
+                                 <div className="flex flex-col">
+                                   <p className="font-black text-sm text-slate-800 leading-none">{ed.nome_pessoa}</p>
+                                   <span className="text-[8px] text-slate-500 uppercase">{funcao}</span>
+                                 </div>
+                               </div>
+                             );
+                           })}
+                           {grupo.educadores.length === 0 && <p className="text-xs text-slate-400 italic">S/ Equipe vinculada</p>}
                         </div>
                       </div>
                     </div>
@@ -309,7 +344,7 @@ export default function Home() {
                     {grupo.destino && (
                       <span className={`inline-block px-3 py-1.5 rounded-lg w-max text-[10px] font-black uppercase tracking-widest border ${
                         grupo.destino === 'Interior' ? 'bg-amber-50 text-amber-600 border-amber-200' : 
-                        grupo.destino === 'Gestão' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
+                        grupo.destino === 'Viagem SEI' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
                         'bg-blue-50 text-blue-600 border-blue-200'
                       }`}>
                         📍 {grupo.cidade ? grupo.cidade : grupo.destino}
@@ -322,6 +357,55 @@ export default function Home() {
           )}
         </section>
 
+        {/* EQUIPE TÉCNICA */}
+        {equipeTecnica && equipeTecnica.length > 0 && (
+          <section className="bg-white/90 backdrop-blur-xl rounded-[2.5rem] shadow-xl shadow-purple-900/5 border border-white overflow-hidden transform transition duration-500 hover:shadow-2xl">
+            <div className="bg-gradient-to-r from-purple-500 via-fuchsia-500 to-purple-600 p-5 text-white flex items-center justify-center gap-3">
+              <span className="text-3xl">🛠️</span>
+              <h3 className="font-black uppercase tracking-widest text-sm drop-shadow-md">Equipe Técnica (Viagens via SEI)</h3>
+            </div>
+            
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead>
+                  <tr className="text-slate-500 border-b border-slate-100 uppercase font-black text-[10px] tracking-widest bg-slate-50">
+                    <th className="p-4 w-10 text-center">Pos</th>
+                    <th className="p-4">Servidor / Função</th>
+                    <th className="p-4 text-center pr-8">Última Viagem (SEI)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {equipeTecnica.map((t: any, idx: number) => (
+                    <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-4 text-center">
+                        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-black text-sm shadow-sm ${idx === 0 ? 'bg-purple-100 text-purple-600 border border-purple-200 shadow-[0_0_15px_rgba(168,85,247,0.2)]' : 'bg-white text-slate-400 border border-slate-200'}`}>
+                          {t.posicao_fila}º
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                           <span className="text-2xl drop-shadow-sm">{getIconePorPapel(t.funcao)}</span>
+                           <div>
+                              <span className="font-black text-[15px] text-slate-800 block">{t.nome}</span>
+                              <span className="text-[10px] text-purple-500 uppercase font-black tracking-widest block mt-0.5">{t.funcao}</span>
+                           </div>
+                        </div>
+                      </td>
+                      <td className="p-4 text-center pr-8">
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-[11px] font-bold text-slate-500">⏱️ {t.ultima_viagem ? formatarParaBR(t.ultima_viagem) : '--/--/----'}</span>
+                          {t.destino_viagem && <span className="text-[9px] font-black uppercase text-purple-600 bg-purple-50 px-2 py-0.5 rounded border border-purple-100 mt-1">📍 {t.destino_viagem}</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* MOTORISTAS */}
         {motoristas && motoristas.length > 0 && (
           <section className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-xl shadow-amber-900/5 border border-white overflow-hidden transform transition duration-500 hover:shadow-2xl">
             <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 p-5 text-white flex items-center justify-center gap-3">
@@ -347,7 +431,7 @@ export default function Home() {
                         {m.destino_viagem && (
                            <span className={`text-[10px] font-black uppercase tracking-wider ${
                              m.destino_viagem === 'Interior' ? 'text-amber-500' : 
-                             m.destino_viagem === 'Gestão' ? 'text-purple-500' : 
+                             m.destino_viagem === 'Viagem SEI' ? 'text-purple-500' : 
                              'text-blue-500'
                            }`}>📍 {m.destino_viagem}</span>
                         )}
@@ -417,7 +501,10 @@ export default function Home() {
                               )}
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <p className={`font-black text-[15px] md:text-lg tracking-tight ${proximo ? 'text-emerald-950' : 'text-slate-800'}`}>{s.nome}</p>
+                                  <p className={`font-black text-[15px] md:text-lg tracking-tight flex items-center gap-2 ${proximo ? 'text-emerald-950' : 'text-slate-800'}`}>
+                                    <span className="text-xl">{getIconePorPapel('Educador')}</span>
+                                    {s.nome}
+                                  </p>
                                   {s.is_supervisor === 1 && <span className="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-black uppercase border border-blue-200">Sup</span>}
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2 mt-2">
