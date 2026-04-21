@@ -16,7 +16,21 @@ const formatarParaBR = (dataString: string | null) => {
   return `${dia}/${mes}/${ano}`;
 };
 
-// AGRUPAMENTO INTELIGENTE PARA A TABELA (Ignora a hora exata para forçar agrupamento por Dia e Local)
+// FUNÇÃO PARA PEGAR O ÍCONE BASEADO NO CARGO/PAPEL
+const getIconePorPapel = (papel: string) => {
+  if (!papel) return '🛡️';
+  const p = papel.toLowerCase();
+  if (p.includes('motorista')) return '🚗';
+  if (p.includes('social') || p.includes('assistente')) return '🤝';
+  if (p.includes('psic')) return '🧠';
+  if (p.includes('enferm') || p.includes('saúde') || p.includes('med')) return '💉';
+  if (p.includes('pedagog')) return '📚';
+  if (p.includes('coord') || p.includes('diret') || p.includes('gest')) return '👔';
+  if (p.includes('admin')) return '💻';
+  if (p.includes('educador') || p.includes('servidor')) return '🛡️';
+  return '🛠️'; // default tecnico
+};
+
 const agruparViagens = (viagens: any[]) => {
   const grupos: Record<string, any> = {};
   
@@ -45,7 +59,6 @@ const agruparViagens = (viagens: any[]) => {
     if (viagem.papel === 'Motorista') {
       grupos[key].motorista = viagem;
     } else {
-      // Evita duplicatas
       if (!grupos[key].educadores.find((e: any) => e.nome_pessoa === viagem.nome_pessoa)) {
         grupos[key].educadores.push(viagem);
       }
@@ -189,6 +202,14 @@ export default function AdminPage() {
     }
   };
 
+  const handleEditarFuncao = async (id: number, nome: string, atual: string) => {
+    const novaFuncao = prompt(`Editar função/cargo de ${nome}:`, atual || "");
+    if (novaFuncao !== null && novaFuncao.trim() !== "") {
+      await atualizarEquipeTecnica(id, { funcao: novaFuncao });
+      carregar();
+    }
+  };
+
   const abrirWhatsApp = (telefone: string, nome: string) => {
     const numeroLimpo = telefone.replace(/\D/g, ''); 
     const mensagem = `Olá ${nome}, a sua viagem pelo CSIPRC foi confirmada! Por favor, esteja pronto. 🚀`;
@@ -206,7 +227,7 @@ export default function AdminPage() {
     setViagemSei("");
     setMotoristaVinculado(""); 
     setPlantaoVinculado("");
-    setTecnicosVinculados([]); // Limpar os técnicos selecionados anteriormente   
+    setTecnicosVinculados([]); 
   };
 
   const confirmarViagem = async (destino: string) => {
@@ -255,7 +276,7 @@ export default function AdminPage() {
          nomesEquipeMensagem.push(`🛡️ ${modalViagem.nomeAlvo} (Educador)`);
       }
 
-      // 3. SALVAR EQUIPE TÉCNICA (se houverem selecionados ou se foi aberto a partir de um técnico)
+      // 3. SALVAR EQUIPE TÉCNICA (se houverem selecionados)
       const tecnicosToSave = [...tecnicosVinculados];
       if (modalViagem.tipo === 'tecnica' && !tecnicosToSave.includes(modalViagem.id)) {
           tecnicosToSave.push(modalViagem.id);
@@ -266,7 +287,8 @@ export default function AdminPage() {
          const tObj = equipeTecnica.find(t => t.id === tId);
          const tNome = tObj ? tObj.nome : modalViagem.nomeAlvo;
          const tFunc = tObj ? tObj.funcao : 'Técnico';
-         nomesEquipeMensagem.push(`🛠️ ${tNome} (${tFunc})`);
+         const iconeT = getIconePorPapel(tFunc);
+         nomesEquipeMensagem.push(`${iconeT} ${tNome} (${tFunc})`);
       }
 
       const [ano, mes, dia] = viagemData.split('-');
@@ -304,7 +326,11 @@ export default function AdminPage() {
   const handleVerRelatorioHistorico = (grupoSelecionado: any) => {
     const nomesEquipe = [
       ...(grupoSelecionado.motorista ? [`🚗 ${grupoSelecionado.motorista.nome_pessoa} (Motorista)`] : []),
-      ...(grupoSelecionado.educadores.length > 0 ? grupoSelecionado.educadores.map((e: any) => `${e.equipe === 'Equipe Técnica' ? '🛠️' : '🛡️'} ${e.nome_pessoa} (${e.equipe === 'Equipe Técnica' ? e.papel : 'Educador'})`) : [])
+      ...(grupoSelecionado.educadores.length > 0 ? grupoSelecionado.educadores.map((e: any) => {
+        const funcaoCargo = e.equipe === 'Equipe Técnica' ? e.papel : 'Educador';
+        const icone = getIconePorPapel(funcaoCargo);
+        return `${icone} ${e.nome_pessoa} (${funcaoCargo})`;
+      }) : [])
     ].join("\n↳ ");
 
     const [ano, mes, dia] = (grupoSelecionado.data_viagem || "").split('T')[0].split('-');
@@ -335,6 +361,13 @@ export default function AdminPage() {
     if (confirm("Deseja APAGAR permanentemente TODO ESSE GRUPO (esta viagem inteira) do histórico?")) { 
       for(const id of ids) { await excluirViagemHistorico(id); }
       carregar(); 
+    }
+  };
+
+  const handleRemoverPessoaDaViagem = async (idViagem: number, nome: string) => {
+    if (confirm(`Deseja remover APENAS "${nome}" deste lançamento de viagem?`)) {
+      await excluirViagemHistorico(idViagem);
+      carregar();
     }
   };
 
@@ -458,7 +491,7 @@ export default function AdminPage() {
                              type="checkbox" 
                              checked={isPrincipal || tecnicosVinculados.includes(t.id)} 
                              onChange={(e) => {
-                                if (isPrincipal) return; // O membro principal não pode ser desmarcado
+                                if (isPrincipal) return; 
                                 if (e.target.checked) setTecnicosVinculados([...tecnicosVinculados, t.id]);
                                 else setTecnicosVinculados(tecnicosVinculados.filter(id => id !== t.id));
                              }}
@@ -593,23 +626,35 @@ export default function AdminPage() {
                       </div>
                       
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
-                        <div className="bg-amber-900/10 p-3 rounded-xl border border-amber-500/20">
+                        <div className="bg-amber-900/10 p-3 rounded-xl border border-amber-500/20 relative group">
                            <span className="text-[10px] font-black uppercase text-amber-500 mb-1 flex items-center gap-1">🚗 Motorista Responsável</span>
-                           <p className="font-black text-white text-sm">{grupo.motorista ? grupo.motorista.nome_pessoa : <span className="text-slate-500 italic font-normal">Sem motorista vinculado</span>}</p>
+                           <div className="flex items-center justify-between">
+                             <p className="font-black text-white text-sm">{grupo.motorista ? grupo.motorista.nome_pessoa : <span className="text-slate-500 italic font-normal">Sem motorista</span>}</p>
+                             {grupo.motorista && (
+                               <button onClick={() => handleRemoverPessoaDaViagem(grupo.motorista.id, grupo.motorista.nome_pessoa)} className="opacity-0 group-hover:opacity-100 text-[10px] bg-red-900/50 hover:bg-red-600 text-red-200 px-2 py-1 rounded transition-all">🗑️ Remover</button>
+                             )}
+                           </div>
                         </div>
                         
                         <div className="bg-blue-900/10 p-3 rounded-xl border border-blue-500/20">
                            <span className="text-[10px] font-black uppercase text-blue-400 mb-1 flex items-center gap-1">🛡️ Equipe Escalada</span>
                            {grupo.educadores.length > 0 ? (
-                             <div className="flex flex-col gap-1 mt-1">
-                               {grupo.educadores.map((ed: any, idx: number) => (
-                                 <div key={idx} className="flex items-center gap-2">
-                                   <p className="font-black text-white text-sm">{ed.nome_pessoa}</p>
-                                   <span className="text-[8px] bg-slate-800 border border-slate-700 text-slate-400 px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">
-                                     {ed.equipe === 'Equipe Técnica' ? ed.papel : ed.equipe}
-                                   </span>
-                                 </div>
-                               ))}
+                             <div className="flex flex-col gap-2 mt-1">
+                               {grupo.educadores.map((ed: any, idx: number) => {
+                                 const funcaoCargo = ed.equipe === 'Equipe Técnica' ? ed.papel : 'Educador';
+                                 return (
+                                   <div key={idx} className="flex items-center justify-between group/ed">
+                                     <div className="flex items-center gap-2">
+                                       <span className="text-lg">{getIconePorPapel(funcaoCargo)}</span>
+                                       <div>
+                                         <p className="font-black text-white text-sm leading-none">{ed.nome_pessoa}</p>
+                                         <span className="text-[8px] text-slate-400 uppercase tracking-tighter">{funcaoCargo}</span>
+                                       </div>
+                                     </div>
+                                     <button onClick={() => handleRemoverPessoaDaViagem(ed.id, ed.nome_pessoa)} className="opacity-0 group-hover/ed:opacity-100 text-[10px] bg-red-900/50 hover:bg-red-600 text-red-200 px-2 py-1 rounded transition-all">🗑️</button>
+                                   </div>
+                                 );
+                               })}
                              </div>
                            ) : (
                              <span className="text-slate-500 italic text-sm">Sem educadores vinculados</span>
@@ -620,7 +665,7 @@ export default function AdminPage() {
                       {(grupo.adolescente || grupo.observacoes) && (
                          <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 mt-1">
                            {grupo.adolescente && <p className="text-xs text-slate-300 font-bold mb-1">👤 Adolescente: <span className="font-normal">{grupo.adolescente}</span></p>}
-                           {grupo.observacoes && <p className="text-xs text-slate-400 font-medium">📝 Obs: {grupo.observacoes}</p>}
+                           {grupo.observacoes && <p className="text-xs text-slate-400 font-medium whitespace-pre-wrap">📝 Obs: {grupo.observacoes}</p>}
                          </div>
                       )}
                     </div>
@@ -700,11 +745,17 @@ export default function AdminPage() {
                       <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-black text-sm ${idx === 0 ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700/50'}`}>{t.posicao_fila}º</span>
                     </td>
                     <td className="p-4">
-                      <span className="font-black text-[15px] text-white block">{t.nome}</span>
-                      <span className="text-[10px] text-purple-400 uppercase font-black tracking-widest block mt-0.5">{t.funcao}</span>
+                      <div className="flex items-center gap-2">
+                         <span className="text-xl">{getIconePorPapel(t.funcao)}</span>
+                         <div>
+                            <span className="font-black text-[15px] text-white block">{t.nome}</span>
+                            <span className="text-[10px] text-purple-400 uppercase font-black tracking-widest block mt-0.5">{t.funcao}</span>
+                         </div>
+                      </div>
                       
-                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <div className="flex flex-wrap items-center gap-2 mt-2 ml-7">
                         <button onClick={() => handleEditTelefone(t.id, 'tecnica', t.telefone, t.nome)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1 rounded uppercase font-bold transition-colors">{t.telefone ? '📱 Editar Tel' : '📱 Add Tel'}</button>
+                        <button onClick={() => handleEditarFuncao(t.id, t.nome, t.funcao)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1 rounded uppercase font-bold transition-colors">✏️ Editar Função</button>
                         {t.telefone && <button onClick={() => abrirWhatsApp(t.telefone, t.nome)} className="text-[9px] bg-emerald-900/30 text-emerald-400 border border-emerald-900/50 px-2 py-1 rounded uppercase font-black hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1 shadow-sm">💬 WhatsApp</button>}
                         <span className="w-px h-3 bg-slate-700 mx-1"></span>
                         <button onClick={() => handleRemoverEquipeTecnica(t.id, t.nome)} className="text-[9px] text-red-500/70 hover:text-red-400 uppercase font-bold">🗑️ Apagar</button>
