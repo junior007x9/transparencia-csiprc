@@ -65,6 +65,7 @@ export async function reordenarFila(tabela: 'servidores' | 'motoristas' | 'equip
 }
 
 async function salvarNoHistorico(nome: string, papel: string, equipe: string, data: string, destino: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
+  // Qualquer destino diferente de Interior ou São Luís terá valor 0.00
   const valor = destino === 'Interior' ? 320.00 : destino === 'São Luís' ? 640.00 : 0.00;
   await client.execute({
     sql: "INSERT INTO viagens_realizadas (nome_pessoa, papel, equipe, data_viagem, destino, valor, adolescente, cidade, observacoes, horario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -72,7 +73,6 @@ async function salvarNoHistorico(nome: string, papel: string, equipe: string, da
   });
 }
 
-// LOGICA DE FILA CORRIGIDA PARA MOTORISTAS
 export async function registrarViagemMotorista(idViajou: number, destino: string, dataViagem?: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
   try {
     const dataDb = dataViagem || new Date().toISOString().split('T')[0];
@@ -88,10 +88,7 @@ export async function registrarViagemMotorista(idViajou: number, destino: string
     const maxPosResult = await client.execute("SELECT MAX(posicao_fila) as max_pos FROM motoristas");
     const maxPos = (maxPosResult.rows[0].max_pos as number) || 1;
 
-    // Reduz 1 posição de quem estava atrás do motorista que viajou
     await client.execute({ sql: "UPDATE motoristas SET posicao_fila = posicao_fila - 1 WHERE posicao_fila > ?", args: [posAtual] as any[] });
-    
-    // Joga o motorista que viajou para a última posição
     await client.execute({ sql: "UPDATE motoristas SET posicao_fila = ?, ultima_viagem = ?, destino_viagem = ? WHERE id = ?", args: [maxPos, dataDb, destino, idViajou] as any[] });
 
     return { success: true };
@@ -100,7 +97,6 @@ export async function registrarViagemMotorista(idViajou: number, destino: string
   }
 }
 
-// LOGICA DE FILA CORRIGIDA PARA DUPLAS
 export async function registrarViagemDupla(plantaoId: number, destino: string, dataViagem?: string, adolescente?: string, cidade?: string, observacoes?: string, horario?: string) {
   try {
     const dataDb = dataViagem || new Date().toISOString().split('T')[0];
@@ -123,10 +119,7 @@ export async function registrarViagemDupla(plantaoId: number, destino: string, d
     await salvarNoHistorico(s1.nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes, horario);
     await salvarNoHistorico(s2.nome as string, 'Servidor', nomeEquipe, dataDb, destino, adolescente, cidade, observacoes, horario);
 
-    // Reduz em 2 posições a fila de todos os que estão atrás da dupla (da posição 3 em diante)
     await client.execute({ sql: "UPDATE servidores SET posicao_fila = posicao_fila - 2 WHERE plantao_id = ? AND posicao_fila > 2", args: [plantaoId] as any[] });
-
-    // Coloca a dupla nas duas últimas posições exatas (total - 1 e total)
     await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, destino_viagem = ?, posicao_fila = ? WHERE id = ?", args: [dataDb, destino, total - 1, s1.id] as any[] });
     await client.execute({ sql: "UPDATE servidores SET ultima_viagem = ?, destino_viagem = ?, posicao_fila = ? WHERE id = ?", args: [dataDb, destino, total, s2.id] as any[] });
 
@@ -159,10 +152,6 @@ export async function registrarViagem(servidorId: number, plantaoId: number, des
   }
 }
 
-/* ==============================================================
-   NOVA SESSÃO: EQUIPE TÉCNICA (VIAGENS VIA SEI - SEM CUSTO)
-============================================================== */
-
 export async function adicionarEquipeTecnica(nome: string, funcao: string) {
   const maxPosResult = await client.execute("SELECT MAX(posicao_fila) as max_pos FROM equipe_tecnica");
   const pos = (maxPosResult.rows[0].max_pos as number || 0) + 1;
@@ -181,7 +170,7 @@ export async function atualizarEquipeTecnica(id: number, dados: any) {
   return { success: true };
 }
 
-export async function registrarViagemEquipeTecnica(idViajou: number, sei: string, dataViagem?: string, cidade?: string, adolescente?: string, observacoes?: string, horario?: string) {
+export async function registrarViagemEquipeTecnica(idViajou: number, dataViagem?: string, cidade?: string, adolescente?: string, observacoes?: string, horario?: string) {
   try {
     const dataDb = dataViagem || new Date().toISOString().split('T')[0];
     const tRes = await client.execute({ sql: "SELECT nome, funcao, posicao_fila FROM equipe_tecnica WHERE id = ?", args: [idViajou] as any[] });
@@ -190,13 +179,11 @@ export async function registrarViagemEquipeTecnica(idViajou: number, sei: string
     const nome = tRes.rows[0].nome as string;
     const funcao = tRes.rows[0].funcao as string;
     const posAtual = tRes.rows[0].posicao_fila as number;
-
-    const obsFinal = `Via SEI: ${sei}${observacoes ? ` | Obs: ${observacoes}` : ''}`;
     
     // Valor 0 pois é sem custo
     await client.execute({
         sql: "INSERT INTO viagens_realizadas (nome_pessoa, papel, equipe, data_viagem, destino, valor, adolescente, cidade, observacoes, horario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        args: [nome, funcao, 'Equipe Técnica', dataDb, 'Viagem SEI', 0, adolescente || null, cidade || null, obsFinal, horario || null] as any[]
+        args: [nome, funcao, 'Equipe Técnica', dataDb, 'Viagem SEI', 0, adolescente || null, cidade || null, observacoes || null, horario || null] as any[]
     });
 
     const maxPosResult = await client.execute("SELECT MAX(posicao_fila) as max_pos FROM equipe_tecnica");
@@ -210,7 +197,6 @@ export async function registrarViagemEquipeTecnica(idViajou: number, sei: string
     return { success: false, error: error.message };
   }
 }
-/* ============================================================== */
 
 export async function configurarEscalaAutomatica(plantaoId: number, mes: number, ano: number, tipo: 'par' | 'impar') {
   const ultimoDia = new Date(ano, mes, 0).getDate();

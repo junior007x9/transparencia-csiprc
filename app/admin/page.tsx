@@ -215,14 +215,20 @@ export default function AdminPage() {
       let result;
       let nomesEquipeMensagem = modalViagem.nomeAlvo;
 
+      // Monta as observações juntando o número SEI caso tenha sido preenchido
+      let obsFinal = viagemObservacoes;
+      if (viagemSei.trim() !== '') {
+        obsFinal = obsFinal ? `Processo SEI: ${viagemSei} | ${obsFinal}` : `Processo SEI: ${viagemSei}`;
+      }
+
       if (modalViagem.tipo === 'tecnica') {
-        result = await registrarViagemEquipeTecnica(modalViagem.id, viagemSei, viagemData, viagemCidade, viagemAdolescente, viagemObservacoes, viagemHora);
-        nomesEquipeMensagem = `🛠️ ${modalViagem.nomeAlvo} (Equipe Técnica)\n📄 Processo SEI: ${viagemSei}`;
+        result = await registrarViagemEquipeTecnica(modalViagem.id, viagemData, viagemCidade, viagemAdolescente, obsFinal, viagemHora);
+        nomesEquipeMensagem = `🛠️ ${modalViagem.nomeAlvo} (Equipe Técnica)`;
       } 
       else if (modalViagem.tipo === 'motorista') {
-        result = await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+        result = await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade, obsFinal, viagemHora);
         if (plantaoVinculado) { 
-          await registrarViagemDupla(Number(plantaoVinculado), destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+          await registrarViagemDupla(Number(plantaoVinculado), destino, viagemData, viagemAdolescente, viagemCidade, obsFinal, viagemHora);
           const pEncontrado = plantoes.find(p => p.id === Number(plantaoVinculado));
           if (pEncontrado) {
              const dupla = pEncontrado.servidores.slice(0, 2).map((s:any) => s.nome).join(" e ");
@@ -233,9 +239,9 @@ export default function AdminPage() {
         }
 
       } else if (modalViagem.tipo === 'dupla') {
-        result = await registrarViagemDupla(modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+        result = await registrarViagemDupla(modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, obsFinal, viagemHora);
         if (motoristaVinculado) { 
-           await registrarViagemMotorista(Number(motoristaVinculado), destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+           await registrarViagemMotorista(Number(motoristaVinculado), destino, viagemData, viagemAdolescente, viagemCidade, obsFinal, viagemHora);
            const mEncontrado = motoristas.find(m => m.id === Number(motoristaVinculado));
            if (mEncontrado) {
               nomesEquipeMensagem = `🚗 ${mEncontrado.nome} (Motorista) \n↳ 🛡️ ${modalViagem.nomeAlvo} (Educadores)`;
@@ -245,9 +251,9 @@ export default function AdminPage() {
         }
 
       } else if (modalViagem.tipo === 'individual') {
-        result = await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+        result = await registrarViagem(modalViagem.id, modalViagem.plantaoId!, destino, viagemData, viagemAdolescente, viagemCidade, obsFinal, viagemHora);
         if (motoristaVinculado) {
-           await registrarViagemMotorista(Number(motoristaVinculado), destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
+           await registrarViagemMotorista(Number(motoristaVinculado), destino, viagemData, viagemAdolescente, viagemCidade, obsFinal, viagemHora);
            const mEncontrado = motoristas.find(m => m.id === Number(motoristaVinculado));
            if (mEncontrado) {
               nomesEquipeMensagem = `🚗 ${mEncontrado.nome} (Motorista) \n↳ 🛡️ ${modalViagem.nomeAlvo} (Educador)`;
@@ -275,10 +281,9 @@ export default function AdminPage() {
       
       msg += `\n👥 *Equipe Escalonada:*\n↳ ${nomesEquipeMensagem}\n`;
       
-      if (viagemObservacoes) msg += `\n📝 *Observações:* ${viagemObservacoes}\n`;
+      if (obsFinal) msg += `\n📝 *Observações:* ${obsFinal}\n`;
       
       let statusTexto = 'Diárias para folha suplementar.';
-      if (destino === 'Gestão') statusTexto = 'Viagem sem custo (Gestão).';
       if (destino === 'Viagem SEI') statusTexto = 'Viagem sem custo (Registro via SEI).';
       
       msg += `\n💰 *Status:* ${statusTexto}`;
@@ -314,7 +319,6 @@ export default function AdminPage() {
     if (grupoSelecionado.observacoes) msg += `\n📝 *Observações:* ${grupoSelecionado.observacoes}\n`;
     
     let statusTexto = 'Diárias para folha suplementar.';
-    if (grupoSelecionado.destino === 'Gestão') statusTexto = 'Viagem sem custo (Gestão).';
     if (grupoSelecionado.destino === 'Viagem SEI') statusTexto = 'Viagem sem custo (Registro via SEI).';
 
     msg += `\n💰 *Status:* ${statusTexto}`;
@@ -432,12 +436,10 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {modalViagem.tipo === 'tecnica' && (
-                <div className="bg-purple-900/20 border border-purple-500/30 p-3 rounded-xl mb-2">
-                  <label className="text-[10px] uppercase font-black text-purple-400 ml-1">Nº do Processo SEI *</label>
-                  <input type="text" placeholder="Ex: 00000.000000/2024-00" value={viagemSei} onChange={(e) => setViagemSei(e.target.value)} disabled={salvandoViagem} className="w-full mt-1 bg-slate-950 border border-purple-800 text-white px-4 py-3 rounded-xl focus:border-purple-500 focus:outline-none disabled:opacity-50" />
-                </div>
-              )}
+              <div className="bg-purple-900/10 border border-purple-500/30 p-3 rounded-xl mb-2">
+                <label className="text-[10px] uppercase font-black text-purple-400 ml-1">Nº do Processo SEI (Opcional)</label>
+                <input type="text" placeholder="Ex: 00000.000000/2024-00" value={viagemSei} onChange={(e) => setViagemSei(e.target.value)} disabled={salvandoViagem} className="w-full mt-1 bg-slate-950 border border-purple-800/50 text-white px-4 py-3 rounded-xl focus:border-purple-500 focus:outline-none disabled:opacity-50" />
+              </div>
 
               <div className="flex gap-3">
                 <div className="flex-[2]">
@@ -466,7 +468,7 @@ export default function AdminPage() {
 
             <div className="flex flex-col gap-3 mb-6 mt-2">
               {modalViagem.tipo === 'tecnica' ? (
-                <button onClick={() => confirmarViagem('Viagem SEI')} disabled={salvandoViagem || !viagemSei} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem || !viagemSei ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-purple-600 hover:bg-purple-500 border border-purple-500/50 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)]'}`}>
+                <button onClick={() => confirmarViagem('Viagem SEI')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-purple-600 hover:bg-purple-500 border border-purple-500/50 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)]'}`}>
                   {salvandoViagem ? '⏳ SALVANDO...' : <>📄 Salvar Viagem via SEI <span className="text-[10px] ml-2 opacity-70">(Sem Custo)</span></>}
                 </button>
               ) : (
@@ -479,8 +481,8 @@ export default function AdminPage() {
                     {salvandoViagem ? '⏳ SALVANDO...' : <>📍 São Luís <span className="text-xs ml-2 opacity-70">(R$ 640,00)</span></>}
                   </button>
 
-                  <button onClick={() => confirmarViagem('Gestão')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-slate-700/50 hover:bg-slate-700 border border-slate-600 text-slate-300'}`}>
-                    {salvandoViagem ? '⏳ SALVANDO...' : <>🏢 Viagem de Gestão <span className="text-xs ml-2 opacity-70">(Sem custo)</span></>}
+                  <button onClick={() => confirmarViagem('Viagem SEI')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/50 text-purple-400'}`}>
+                    {salvandoViagem ? '⏳ SALVANDO...' : <>📄 Viagem via SEI <span className="text-xs ml-2 opacity-70">(Sem custo)</span></>}
                   </button>
                 </>
               )}
@@ -545,7 +547,6 @@ export default function AdminPage() {
                         </span>
                         <span className={`px-2 py-1.5 rounded text-[10px] font-black uppercase tracking-widest border ${
                             grupo.destino === 'Interior' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 
-                            grupo.destino === 'Gestão' ? 'bg-slate-800 text-slate-400 border-slate-600' : 
                             grupo.destino === 'Viagem SEI' ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' :
                             'bg-blue-500/10 text-blue-400 border-blue-500/30'
                           }`}>
@@ -787,7 +788,7 @@ export default function AdminPage() {
                             {!ePortaria && (
                               <div className="flex flex-col items-center gap-1">
                                 <span className="text-[11px] font-bold text-slate-300">⏱️ {s.ultima_viagem ? formatarParaBR(s.ultima_viagem) : '--/--/----'}</span>
-                                {s.destino_viagem && <span className={`text-[9px] font-black uppercase ${s.destino_viagem === 'Interior' ? 'text-amber-400' : s.destino_viagem === 'Gestão' ? 'text-slate-400' : 'text-blue-400'}`}>📍 {s.destino_viagem}</span>}
+                                {s.destino_viagem && <span className={`text-[9px] font-black uppercase ${s.destino_viagem === 'Interior' ? 'text-amber-400' : s.destino_viagem === 'Viagem SEI' ? 'text-purple-400' : 'text-blue-400'}`}>📍 {s.destino_viagem}</span>}
                               </div>
                             )}
                           </td>
