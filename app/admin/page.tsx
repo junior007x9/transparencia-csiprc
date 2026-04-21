@@ -5,7 +5,8 @@ import {
   getDadosCompletos, registrarViagem, registrarViagemDupla, registrarViagemMotorista, 
   atualizarServidor, atualizarMotorista, configurarEscalaAutomatica, atualizarDiasPlantao, 
   corrigirNumeracaoFilas, adicionarServidor, removerServidor, zerarHistoricoViagens, 
-  getRelatorioViagens, excluirViagemHistorico, verificarSenhaAdmin, reordenarFila, limparTodoHistorico 
+  getRelatorioViagens, excluirViagemHistorico, verificarSenhaAdmin, reordenarFila, limparTodoHistorico,
+  adicionarEquipeTecnica, removerEquipeTecnica, atualizarEquipeTecnica, registrarViagemEquipeTecnica
 } from "../actions";
 
 const formatarParaBR = (dataString: string | null) => {
@@ -73,6 +74,7 @@ export default function AdminPage() {
 
   const [plantoes, setPlantoes] = useState<any[]>([]);
   const [motoristas, setMotoristas] = useState<any[]>([]);
+  const [equipeTecnica, setEquipeTecnica] = useState<any[]>([]);
   const [relatorio, setRelatorio] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -85,6 +87,7 @@ export default function AdminPage() {
   const [viagemAdolescente, setViagemAdolescente] = useState("");
   const [viagemCidade, setViagemCidade] = useState("");
   const [viagemObservacoes, setViagemObservacoes] = useState("");
+  const [viagemSei, setViagemSei] = useState("");
   
   const [motoristaVinculado, setMotoristaVinculado] = useState<string>("");
   const [plantaoVinculado, setPlantaoVinculado] = useState<string>("");
@@ -94,10 +97,11 @@ export default function AdminPage() {
 
   const carregar = async () => {
     setLoading(true);
-    const { plantoes, motoristas } = await getDadosCompletos();
+    const { plantoes, motoristas, equipeTecnica } = await getDadosCompletos();
     const rel = await getRelatorioViagens();
     setPlantoes(plantoes);
     setMotoristas(motoristas);
+    setEquipeTecnica(equipeTecnica || []);
     setRelatorio(rel);
     setLoading(false);
   };
@@ -155,6 +159,12 @@ export default function AdminPage() {
       newList.splice(dropIndex, 0, removed);
       setMotoristas(newList);
       await reordenarFila('motoristas', newList.map(m => m.id));
+    } else if (itemType === 'tecnica') {
+      const newList = [...equipeTecnica];
+      const [removed] = newList.splice(dragIndex, 1);
+      newList.splice(dropIndex, 0, removed);
+      setEquipeTecnica(newList);
+      await reordenarFila('equipe_tecnica', newList.map(t => t.id));
     } else {
       const plantoesCopia = [...plantoes];
       const pIndex = plantoesCopia.findIndex(p => p.id === groupId);
@@ -168,11 +178,12 @@ export default function AdminPage() {
     carregar();
   };
 
-  const handleEditTelefone = async (id: number, tipo: 'servidor' | 'motorista', atual: string, nome: string) => {
+  const handleEditTelefone = async (id: number, tipo: 'servidor' | 'motorista' | 'tecnica', atual: string, nome: string) => {
     const novo = prompt(`Digite o número de WhatsApp de ${nome} (Apenas números com DDD, ex: 99988887777):`, atual || "");
     if (novo !== null) {
       if (tipo === 'servidor') await atualizarServidor(id, { telefone: novo });
-      else await atualizarMotorista(id, { telefone: novo });
+      else if (tipo === 'motorista') await atualizarMotorista(id, { telefone: novo });
+      else await atualizarEquipeTecnica(id, { telefone: novo });
       carregar();
     }
   };
@@ -191,6 +202,7 @@ export default function AdminPage() {
     setViagemAdolescente(""); 
     setViagemCidade("");
     setViagemObservacoes("");
+    setViagemSei("");
     setMotoristaVinculado(""); 
     setPlantaoVinculado("");   
   };
@@ -203,7 +215,11 @@ export default function AdminPage() {
       let result;
       let nomesEquipeMensagem = modalViagem.nomeAlvo;
 
-      if (modalViagem.tipo === 'motorista') {
+      if (modalViagem.tipo === 'tecnica') {
+        result = await registrarViagemEquipeTecnica(modalViagem.id, viagemSei, viagemData, viagemCidade, viagemAdolescente, viagemObservacoes, viagemHora);
+        nomesEquipeMensagem = `🛠️ ${modalViagem.nomeAlvo} (Equipe Técnica)\n📄 Processo SEI: ${viagemSei}`;
+      } 
+      else if (modalViagem.tipo === 'motorista') {
         result = await registrarViagemMotorista(modalViagem.id, destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
         if (plantaoVinculado) { 
           await registrarViagemDupla(Number(plantaoVinculado), destino, viagemData, viagemAdolescente, viagemCidade, viagemObservacoes, viagemHora);
@@ -260,7 +276,12 @@ export default function AdminPage() {
       msg += `\n👥 *Equipe Escalonada:*\n↳ ${nomesEquipeMensagem}\n`;
       
       if (viagemObservacoes) msg += `\n📝 *Observações:* ${viagemObservacoes}\n`;
-      msg += `\n💰 *Status:* ${destino === 'Gestão' ? 'Viagem sem custo (Gestão).' : 'Diárias para folha suplementar.'}`;
+      
+      let statusTexto = 'Diárias para folha suplementar.';
+      if (destino === 'Gestão') statusTexto = 'Viagem sem custo (Gestão).';
+      if (destino === 'Viagem SEI') statusTexto = 'Viagem sem custo (Registro via SEI).';
+      
+      msg += `\n💰 *Status:* ${statusTexto}`;
 
       setRelatorioGerado(msg);
       setModalViagem(null); 
@@ -275,7 +296,7 @@ export default function AdminPage() {
   const handleVerRelatorioHistorico = (grupoSelecionado: any) => {
     const nomesEquipe = [
       ...(grupoSelecionado.motorista ? [`🚗 ${grupoSelecionado.motorista.nome_pessoa} (Motorista)`] : []),
-      ...(grupoSelecionado.educadores.length > 0 ? [`🛡️ ${grupoSelecionado.educadores.map((e: any) => e.nome_pessoa).join(" e ")} (Educadores)`] : [])
+      ...(grupoSelecionado.educadores.length > 0 ? [`🛡️ ${grupoSelecionado.educadores.map((e: any) => `${e.nome_pessoa} (${e.papel === 'Técnico' ? e.funcao || 'Técnico' : 'Educador'})`).join(" e ")}`] : [])
     ].join("\n↳ ");
 
     const [ano, mes, dia] = (grupoSelecionado.data_viagem || "").split('T')[0].split('-');
@@ -291,7 +312,12 @@ export default function AdminPage() {
     msg += `\n👥 *Equipe Escalonada:*\n↳ ${nomesEquipe}\n`;
     
     if (grupoSelecionado.observacoes) msg += `\n📝 *Observações:* ${grupoSelecionado.observacoes}\n`;
-    msg += `\n💰 *Status:* ${grupoSelecionado.destino === 'Gestão' ? 'Viagem sem custo (Gestão).' : 'Diárias para folha suplementar.'}`;
+    
+    let statusTexto = 'Diárias para folha suplementar.';
+    if (grupoSelecionado.destino === 'Gestão') statusTexto = 'Viagem sem custo (Gestão).';
+    if (grupoSelecionado.destino === 'Viagem SEI') statusTexto = 'Viagem sem custo (Registro via SEI).';
+
+    msg += `\n💰 *Status:* ${statusTexto}`;
 
     setRelatorioGerado(msg);
   };
@@ -320,12 +346,28 @@ export default function AdminPage() {
   const limparFolga = async (id: number) => { await atualizarServidor(id, { data_folga: null }); carregar(); };
   const handleZerarHistorico = async () => { if (confirm("⚠️ Isso apaga a fila inteira. Certeza?")) { await zerarHistoricoViagens(); carregar(); } };
   const handleRepararFilas = async () => { await corrigirNumeracaoFilas(); alert("✅ Fila Reparada!"); carregar(); };
+  
   const handleAdicionarMembro = async (plantaoId: number, plantaoNome: string) => { const nome = prompt(`NOVO EDUCADOR para a equipa ${plantaoNome}:`); if (nome) { await adicionarServidor(plantaoId, nome); carregar(); } };
   const handleRemoverMembro = async (id: number, nome: string) => { if (confirm(`⚠️ REMOVER "${nome}"?`)) { await removerServidor(id); carregar(); } };
   const handleTrocarPlantao = async (id: number, atualId: number) => {
     const lista = plantoes.map(p => `${p.id}: ${p.nome}`).join("\n");
     const novoId = prompt(`ID da nova equipa:\n\n${lista}`, atualId.toString());
     if (novoId && parseInt(novoId) !== atualId) { await atualizarServidor(id, { plantao_id: parseInt(novoId) }); carregar(); }
+  };
+
+  const handleAdicionarEquipeTecnica = async () => {
+    const nome = prompt("Nome do Servidor Técnico:");
+    if (!nome) return;
+    const funcao = prompt("Função (ex: Assistente Social, Psicólogo, etc):");
+    if (!funcao) return;
+    await adicionarEquipeTecnica(nome, funcao);
+    carregar();
+  };
+  const handleRemoverEquipeTecnica = async (id: number, nome: string) => {
+    if (confirm(`⚠️ Remover "${nome}" da Equipe Técnica?`)) {
+      await removerEquipeTecnica(id);
+      carregar();
+    }
   };
 
   if (loading) return <div className="min-h-screen bg-[#020617] flex justify-center items-center"><div className="w-16 h-16 border-4 border-slate-800 border-t-emerald-500 rounded-full animate-spin"></div></div>;
@@ -362,9 +404,9 @@ export default function AdminPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl p-6 text-center">
             <h3 className="text-xl font-black text-white mb-2 uppercase tracking-wide">Registrar Viagem Completa</h3>
-            <p className="text-emerald-400/80 font-bold text-xs mb-4">Vincule os escalados abaixo para salvar todos juntos.</p>
+            <p className="text-emerald-400/80 font-bold text-xs mb-4">Vincule os dados abaixo para salvar o registro.</p>
             
-            <div className="flex flex-col gap-3 mb-5 text-left max-h-[50vh] overflow-y-auto px-1">
+            <div className="flex flex-col gap-3 mb-5 text-left max-h-[60vh] overflow-y-auto px-1">
               
               {modalViagem.tipo === 'motorista' && (
                 <div className="bg-indigo-900/20 border border-indigo-500/30 p-3 rounded-xl mb-2">
@@ -390,6 +432,13 @@ export default function AdminPage() {
                 </div>
               )}
 
+              {modalViagem.tipo === 'tecnica' && (
+                <div className="bg-purple-900/20 border border-purple-500/30 p-3 rounded-xl mb-2">
+                  <label className="text-[10px] uppercase font-black text-purple-400 ml-1">Nº do Processo SEI *</label>
+                  <input type="text" placeholder="Ex: 00000.000000/2024-00" value={viagemSei} onChange={(e) => setViagemSei(e.target.value)} disabled={salvandoViagem} className="w-full mt-1 bg-slate-950 border border-purple-800 text-white px-4 py-3 rounded-xl focus:border-purple-500 focus:outline-none disabled:opacity-50" />
+                </div>
+              )}
+
               <div className="flex gap-3">
                 <div className="flex-[2]">
                   <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Data</label>
@@ -402,12 +451,12 @@ export default function AdminPage() {
               </div>
 
               <div>
-                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Adolescente (Opcional)</label>
-                <input type="text" placeholder="Ex: João da Silva" value={viagemAdolescente} onChange={(e) => setViagemAdolescente(e.target.value)} disabled={salvandoViagem} className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" />
-              </div>
-              <div>
                 <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Cidade Destino (Opcional)</label>
                 <input type="text" placeholder="Ex: Coelho Neto" value={viagemCidade} onChange={(e) => setViagemCidade(e.target.value)} disabled={salvandoViagem} className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Adolescente (Opcional)</label>
+                <input type="text" placeholder="Ex: João da Silva" value={viagemAdolescente} onChange={(e) => setViagemAdolescente(e.target.value)} disabled={salvandoViagem} className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none disabled:opacity-50" />
               </div>
               <div>
                 <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Observações (Opcional)</label>
@@ -416,17 +465,25 @@ export default function AdminPage() {
             </div>
 
             <div className="flex flex-col gap-3 mb-6 mt-2">
-              <button onClick={() => confirmarViagem('Interior')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/50 text-amber-400'}`}>
-                {salvandoViagem ? '⏳ SALVANDO...' : <>📍 Interior <span className="text-xs ml-2 opacity-70">(R$ 320,00)</span></>}
-              </button>
-              
-              <button onClick={() => confirmarViagem('São Luís')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 text-blue-400'}`}>
-                {salvandoViagem ? '⏳ SALVANDO...' : <>📍 São Luís <span className="text-xs ml-2 opacity-70">(R$ 640,00)</span></>}
-              </button>
+              {modalViagem.tipo === 'tecnica' ? (
+                <button onClick={() => confirmarViagem('Viagem SEI')} disabled={salvandoViagem || !viagemSei} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem || !viagemSei ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-purple-600 hover:bg-purple-500 border border-purple-500/50 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)]'}`}>
+                  {salvandoViagem ? '⏳ SALVANDO...' : <>📄 Salvar Viagem via SEI <span className="text-[10px] ml-2 opacity-70">(Sem Custo)</span></>}
+                </button>
+              ) : (
+                <>
+                  <button onClick={() => confirmarViagem('Interior')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/50 text-amber-400'}`}>
+                    {salvandoViagem ? '⏳ SALVANDO...' : <>📍 Interior <span className="text-xs ml-2 opacity-70">(R$ 320,00)</span></>}
+                  </button>
+                  
+                  <button onClick={() => confirmarViagem('São Luís')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 text-blue-400'}`}>
+                    {salvandoViagem ? '⏳ SALVANDO...' : <>📍 São Luís <span className="text-xs ml-2 opacity-70">(R$ 640,00)</span></>}
+                  </button>
 
-              <button onClick={() => confirmarViagem('Gestão')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/50 text-purple-400'}`}>
-                {salvandoViagem ? '⏳ SALVANDO...' : <>🏢 Viagem de Gestão <span className="text-xs ml-2 opacity-70">(Sem custo)</span></>}
-              </button>
+                  <button onClick={() => confirmarViagem('Gestão')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-slate-700/50 hover:bg-slate-700 border border-slate-600 text-slate-300'}`}>
+                    {salvandoViagem ? '⏳ SALVANDO...' : <>🏢 Viagem de Gestão <span className="text-xs ml-2 opacity-70">(Sem custo)</span></>}
+                  </button>
+                </>
+              )}
             </div>
             <button onClick={() => setModalViagem(null)} disabled={salvandoViagem} className="text-slate-500 hover:text-white uppercase font-bold text-xs tracking-widest disabled:opacity-50">Cancelar</button>
           </div>
@@ -447,7 +504,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* MODAL DO RELATÓRIO DE GASTOS COM O NOVO VISUAL DE BLOCO ÚNICO */}
+      {/* MODAL DO RELATÓRIO DE GASTOS */}
       {modalRelatorio && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-7xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
@@ -482,13 +539,14 @@ export default function AdminPage() {
                   <div key={i} className="bg-slate-900 border border-slate-700/80 p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 hover:border-slate-500 transition-colors">
                     
                     <div className="flex-1 flex flex-col gap-3">
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <span className="bg-slate-800 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 font-black text-[11px] flex items-center gap-1 w-max">
                           📅 {formatarParaBR(grupo.data_viagem)} {grupo.horario && `- ${grupo.horario}`}
                         </span>
                         <span className={`px-2 py-1.5 rounded text-[10px] font-black uppercase tracking-widest border ${
                             grupo.destino === 'Interior' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 
-                            grupo.destino === 'Gestão' ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' : 
+                            grupo.destino === 'Gestão' ? 'bg-slate-800 text-slate-400 border-slate-600' : 
+                            grupo.destino === 'Viagem SEI' ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' :
                             'bg-blue-500/10 text-blue-400 border-blue-500/30'
                           }`}>
                             📍 {grupo.cidade ? `${grupo.cidade} (${grupo.destino})` : grupo.destino}
@@ -508,7 +566,7 @@ export default function AdminPage() {
                                {grupo.educadores.map((ed: any, idx: number) => (
                                  <div key={idx} className="flex items-center gap-2">
                                    <p className="font-black text-white text-sm">{ed.nome_pessoa}</p>
-                                   <span className="text-[8px] bg-slate-800 border border-slate-700 text-slate-400 px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">{ed.equipe}</span>
+                                   <span className="text-[8px] bg-slate-800 border border-slate-700 text-slate-400 px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">{ed.equipe} {ed.papel === 'Técnico' && ' (Técnico)'}</span>
                                  </div>
                                ))}
                              </div>
@@ -561,6 +619,72 @@ export default function AdminPage() {
           </div>
         </header>
 
+        {/* EQUIPE TÉCNICA (NOVA) */}
+        <section className="mb-12 bg-slate-900/50 backdrop-blur-xl rounded-[2rem] border border-slate-800/80 overflow-hidden shadow-2xl">
+          <div className="p-5 bg-gradient-to-r from-purple-500/10 to-transparent border-b border-purple-500/20 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-purple-500 text-xl">🛠️</span>
+              <h3 className="text-purple-500 font-black uppercase text-xs tracking-widest">Equipe Técnica (Cadastro via SEI)</h3>
+            </div>
+            <button onClick={handleAdicionarEquipeTecnica} className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 px-3 py-1.5 rounded-lg text-[10px] uppercase font-black tracking-widest transition-all">➕ Add Servidor</button>
+          </div>
+          
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead>
+                <tr className="text-slate-500 border-b border-slate-800/80 uppercase font-black text-[10px] tracking-widest bg-slate-950/30">
+                  <th className="p-4 w-10 text-center">Pos</th>
+                  <th className="p-4">Servidor / Função</th>
+                  <th className="p-4 text-center">Última Viagem (SEI)</th>
+                  <th className="p-4 text-right pr-8">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/40">
+                {equipeTecnica.length === 0 && (
+                  <tr><td colSpan={4} className="p-6 text-center text-slate-500 text-xs font-bold uppercase tracking-widest">Nenhum servidor técnico cadastrado.</td></tr>
+                )}
+                {equipeTecnica.map((t: any, idx: number) => (
+                  <tr 
+                    key={t.id} 
+                    draggable 
+                    onDragStart={(e) => onDragStart(e, idx, 'tecnica', 'tecnica')}
+                    onDragEnd={onDragEnd}
+                    onDragOver={onDragOver}
+                    onDragLeave={onDragLeave}
+                    onDrop={(e) => onDrop(e, idx, 'tecnica', 'tecnica')}
+                    className="hover:bg-white/[0.05] transition-colors cursor-grab active:cursor-grabbing"
+                  >
+                    <td className="p-4 text-center flex items-center justify-center gap-2">
+                      <span className="text-slate-600 text-lg cursor-grab hover:text-white transition-colors">☰</span>
+                      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-black text-sm ${idx === 0 ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700/50'}`}>{t.posicao_fila}º</span>
+                    </td>
+                    <td className="p-4">
+                      <span className="font-black text-[15px] text-white block">{t.nome}</span>
+                      <span className="text-[10px] text-purple-400 uppercase font-black tracking-widest block mt-0.5">{t.funcao}</span>
+                      
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <button onClick={() => handleEditTelefone(t.id, 'tecnica', t.telefone, t.nome)} className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 px-2 py-1 rounded uppercase font-bold transition-colors">{t.telefone ? '📱 Editar Tel' : '📱 Add Tel'}</button>
+                        {t.telefone && <button onClick={() => abrirWhatsApp(t.telefone, t.nome)} className="text-[9px] bg-emerald-900/30 text-emerald-400 border border-emerald-900/50 px-2 py-1 rounded uppercase font-black hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1 shadow-sm">💬 WhatsApp</button>}
+                        <span className="w-px h-3 bg-slate-700 mx-1"></span>
+                        <button onClick={() => handleRemoverEquipeTecnica(t.id, t.nome)} className="text-[9px] text-red-500/70 hover:text-red-400 uppercase font-bold">🗑️ Apagar</button>
+                      </div>
+                    </td>
+                    <td className="p-4 text-center">
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="text-[11px] font-bold text-slate-300">⏱️ {t.ultima_viagem ? formatarParaBR(t.ultima_viagem) : '--/--/----'}</span>
+                        {t.destino_viagem && <span className="text-[9px] font-black uppercase text-purple-400">📍 {t.destino_viagem}</span>}
+                      </div>
+                    </td>
+                    <td className="p-4 text-right pr-8">
+                      <button onClick={() => abrirModalViagem('tecnica', t.id, undefined, t.nome)} className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-xl font-black uppercase text-[9px] tracking-widest shadow-sm transition-all shadow-purple-900/30">📄 Lançar via SEI</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         {/* MOTORISTAS */}
         {motoristas && motoristas.length > 0 && (
           <section className="mb-12 bg-slate-900/50 backdrop-blur-xl rounded-[2rem] border border-slate-800/80 overflow-hidden shadow-2xl">
@@ -591,7 +715,7 @@ export default function AdminPage() {
 
         <p className="text-xs text-slate-500 mb-6 uppercase tracking-widest flex items-center gap-2">💡 Dica: Pode segurar e arrastar <span className="text-slate-300 text-base">☰</span> qualquer membro para reordenar a fila manualmente.</p>
 
-        {/* EQUIPAS (PLANTOES) COM ARRASTAR E SOLTAR */}
+        {/* EQUIPAS (PLANTOES) */}
         <div className="grid grid-cols-1 gap-8">
           {plantoes.map((plantao: any) => {
             const ePortaria = plantao.nome.toLowerCase().includes('portaria');
@@ -663,7 +787,7 @@ export default function AdminPage() {
                             {!ePortaria && (
                               <div className="flex flex-col items-center gap-1">
                                 <span className="text-[11px] font-bold text-slate-300">⏱️ {s.ultima_viagem ? formatarParaBR(s.ultima_viagem) : '--/--/----'}</span>
-                                {s.destino_viagem && <span className={`text-[9px] font-black uppercase ${s.destino_viagem === 'Interior' ? 'text-amber-400' : s.destino_viagem === 'Gestão' ? 'text-purple-400' : 'text-blue-400'}`}>📍 {s.destino_viagem}</span>}
+                                {s.destino_viagem && <span className={`text-[9px] font-black uppercase ${s.destino_viagem === 'Interior' ? 'text-amber-400' : s.destino_viagem === 'Gestão' ? 'text-slate-400' : 'text-blue-400'}`}>📍 {s.destino_viagem}</span>}
                               </div>
                             )}
                           </td>

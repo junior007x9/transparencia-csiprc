@@ -22,12 +22,19 @@ export async function getDadosCompletos() {
     motoristas = mRes.rows as any[];
   } catch (e) {}
 
+  let equipeTecnica: any[] = [];
+  try {
+    const eqRes = await client.execute("SELECT * FROM equipe_tecnica ORDER BY posicao_fila");
+    equipeTecnica = eqRes.rows as any[];
+  } catch (e) {}
+
   const dadosLimpados = {
     plantoes: pRes.rows.map((p: any) => ({
       ...p,
       servidores: sRes.rows.filter((s: any) => s.plantao_id === p.id)
     })),
-    motoristas: motoristas
+    motoristas: motoristas,
+    equipeTecnica: equipeTecnica
   };
   return JSON.parse(JSON.stringify(dadosLimpados));
 }
@@ -47,7 +54,7 @@ export async function limparTodoHistorico() {
   return { success: true };
 }
 
-export async function reordenarFila(tabela: 'servidores' | 'motoristas', idsOrdenados: number[]) {
+export async function reordenarFila(tabela: 'servidores' | 'motoristas' | 'equipe_tecnica', idsOrdenados: number[]) {
   for (let i = 0; i < idsOrdenados.length; i++) {
     await client.execute({
       sql: `UPDATE ${tabela} SET posicao_fila = ? WHERE id = ?`,
@@ -152,6 +159,59 @@ export async function registrarViagem(servidorId: number, plantaoId: number, des
   }
 }
 
+/* ==============================================================
+   NOVA SESSÃO: EQUIPE TÉCNICA (VIAGENS VIA SEI - SEM CUSTO)
+============================================================== */
+
+export async function adicionarEquipeTecnica(nome: string, funcao: string) {
+  const maxPosResult = await client.execute("SELECT MAX(posicao_fila) as max_pos FROM equipe_tecnica");
+  const pos = (maxPosResult.rows[0].max_pos as number || 0) + 1;
+  await client.execute({ sql: "INSERT INTO equipe_tecnica (nome, funcao, posicao_fila) VALUES (?, ?, ?)", args: [nome, funcao, pos] as any[] });
+  return { success: true };
+}
+
+export async function removerEquipeTecnica(id: number) {
+  await client.execute({ sql: "DELETE FROM equipe_tecnica WHERE id = ?", args: [id] as any[] });
+  return { success: true };
+}
+
+export async function atualizarEquipeTecnica(id: number, dados: any) {
+  const fields = Object.keys(dados).map(key => `${key} = ?`).join(", ");
+  await client.execute({ sql: `UPDATE equipe_tecnica SET ${fields} WHERE id = ?`, args: [...Object.values(dados), id] as any[] });
+  return { success: true };
+}
+
+export async function registrarViagemEquipeTecnica(idViajou: number, sei: string, dataViagem?: string, cidade?: string, adolescente?: string, observacoes?: string, horario?: string) {
+  try {
+    const dataDb = dataViagem || new Date().toISOString().split('T')[0];
+    const tRes = await client.execute({ sql: "SELECT nome, funcao, posicao_fila FROM equipe_tecnica WHERE id = ?", args: [idViajou] as any[] });
+    if (tRes.rows.length === 0) return { success: false, error: "Membro não encontrado." };
+
+    const nome = tRes.rows[0].nome as string;
+    const funcao = tRes.rows[0].funcao as string;
+    const posAtual = tRes.rows[0].posicao_fila as number;
+
+    const obsFinal = `Via SEI: ${sei}${observacoes ? ` | Obs: ${observacoes}` : ''}`;
+    
+    // Valor 0 pois é sem custo
+    await client.execute({
+        sql: "INSERT INTO viagens_realizadas (nome_pessoa, papel, equipe, data_viagem, destino, valor, adolescente, cidade, observacoes, horario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        args: [nome, funcao, 'Equipe Técnica', dataDb, 'Viagem SEI', 0, adolescente || null, cidade || null, obsFinal, horario || null] as any[]
+    });
+
+    const maxPosResult = await client.execute("SELECT MAX(posicao_fila) as max_pos FROM equipe_tecnica");
+    const maxPos = (maxPosResult.rows[0].max_pos as number) || 1;
+
+    await client.execute({ sql: "UPDATE equipe_tecnica SET posicao_fila = posicao_fila - 1 WHERE posicao_fila > ?", args: [posAtual] as any[] });
+    await client.execute({ sql: "UPDATE equipe_tecnica SET posicao_fila = ?, ultima_viagem = ?, destino_viagem = ? WHERE id = ?", args: [maxPos, dataDb, 'Viagem SEI', idViajou] as any[] });
+
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+/* ============================================================== */
+
 export async function configurarEscalaAutomatica(plantaoId: number, mes: number, ano: number, tipo: 'par' | 'impar') {
   const ultimoDia = new Date(ano, mes, 0).getDate();
   const diasArr: string[] = [];
@@ -197,6 +257,13 @@ export async function corrigirNumeracaoFilas() {
       await client.execute({ sql: "UPDATE servidores SET posicao_fila = ? WHERE id = ?", args: [i + 1, sRes.rows[i].id] as any[] });
     }
   }
+  try {
+    const tRes = await client.execute("SELECT id FROM equipe_tecnica ORDER BY posicao_fila ASC, id ASC");
+    for (let i = 0; i < tRes.rows.length; i++) {
+      await client.execute({ sql: "UPDATE equipe_tecnica SET posicao_fila = ? WHERE id = ?", args: [i + 1, tRes.rows[i].id] as any[] });
+    }
+  } catch (e) {}
+  
   return { success: true };
 }
 
@@ -215,5 +282,6 @@ export async function removerServidor(id: number) {
 export async function zerarHistoricoViagens() {
   await client.execute("UPDATE servidores SET ultima_viagem = NULL, destino_viagem = NULL");
   await client.execute("UPDATE motoristas SET ultima_viagem = NULL, destino_viagem = NULL");
+  try { await client.execute("UPDATE equipe_tecnica SET ultima_viagem = NULL, destino_viagem = NULL"); } catch(e) {}
   return { success: true };
 }
