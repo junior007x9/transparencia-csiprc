@@ -536,7 +536,7 @@ export default function Home() {
       </div>
 
       {/* Estilo Global Anti-Scrollbar */}
-      <style dangerouslySetContent={{__html: `
+      <style dangerouslySetInnerHTML={{__html: `
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />
