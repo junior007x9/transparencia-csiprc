@@ -10,6 +10,7 @@ const formatarParaBR = (dataString: string | null) => {
   return `${dia}/${mes}/${ano}`;
 };
 
+// ÍCONES REVERTIDOS PARA O ESCUDO (Mais compatível com todos os ecrãs)
 const getIconePorPapel = (papel: string) => {
   if (!papel) return '🛡️';
   const p = papel.toLowerCase();
@@ -20,54 +21,33 @@ const getIconePorPapel = (papel: string) => {
   if (p.includes('pedagog')) return '📚';
   if (p.includes('coord') || p.includes('diret') || p.includes('gest')) return '👔';
   if (p.includes('admin')) return '💻';
-  if (p.includes('educador') || p.includes('servidor')) return '🛡️';
+  if (p.includes('segurança') || p.includes('educador') || p.includes('servidor')) return '🛡️';
   return '🛠️';
 };
 
-// Define cores de fundo suaves para os ícones baseados no papel
 const getCorFundoIcone = (papel: string) => {
-  if (!papel) return 'bg-slate-100 border-slate-200';
+  if (!papel) return 'bg-slate-100 border-slate-200 text-slate-700';
   const p = papel.toLowerCase();
-  if (p.includes('motorista')) return 'bg-amber-100 border-amber-200';
-  if (p.includes('social') || p.includes('assistente')) return 'bg-blue-100 border-blue-200';
-  if (p.includes('psic')) return 'bg-purple-100 border-purple-200';
-  if (p.includes('enferm') || p.includes('saúde') || p.includes('med')) return 'bg-rose-100 border-rose-200';
-  if (p.includes('pedagog')) return 'bg-emerald-100 border-emerald-200';
-  return 'bg-indigo-100 border-indigo-200'; 
+  if (p.includes('motorista')) return 'bg-amber-100 border-amber-200 text-amber-700';
+  if (p.includes('social') || p.includes('assistente')) return 'bg-blue-100 border-blue-200 text-blue-700';
+  if (p.includes('psic')) return 'bg-purple-100 border-purple-200 text-purple-700';
+  if (p.includes('enferm') || p.includes('saúde') || p.includes('med')) return 'bg-rose-100 border-rose-200 text-rose-700';
+  if (p.includes('pedagog')) return 'bg-emerald-100 border-emerald-200 text-emerald-700';
+  if (p.includes('segurança') || p.includes('educador') || p.includes('servidor')) return 'bg-slate-800 border-slate-700 text-white'; 
+  return 'bg-indigo-100 border-indigo-200 text-indigo-700'; 
 };
 
 const agruparViagens = (viagens: any[]) => {
   const grupos: Record<string, any> = {};
   viagens.forEach(viagem => {
-    const cidadeFormatada = viagem.cidade ? viagem.cidade.toLowerCase().trim() : '';
-    const key = `${viagem.data_viagem}_${viagem.destino}_${cidadeFormatada}`;
+    const key = `${viagem.data_viagem}_${viagem.destino}_${viagem.cidade || ''}`;
     if (!grupos[key]) {
-      grupos[key] = {
-        id: viagem.id, data_viagem: viagem.data_viagem, destino: viagem.destino,
-        cidade: viagem.cidade, horario: viagem.horario, adolescente: viagem.adolescente,
-        observacoes: viagem.observacoes, motorista: null, educadores: [], valorTotal: 0
-      };
+      grupos[key] = { id: viagem.id, data_viagem: viagem.data_viagem, destino: viagem.destino, cidade: viagem.cidade, horario: viagem.horario, adolescente: viagem.adolescente, observacoes: viagem.observacoes, motorista: null, educadores: [], valorTotal: 0 };
     }
-    if (viagem.papel === 'Motorista') {
-      grupos[key].motorista = viagem;
-    } else {
-      if (!grupos[key].educadores.find((e: any) => e.nome_pessoa === viagem.nome_pessoa)) {
-        grupos[key].educadores.push(viagem);
-      }
-    }
-    grupos[key].valorTotal += (viagem.valor || 0);
-    if (viagem.adolescente && !grupos[key].adolescente) grupos[key].adolescente = viagem.adolescente;
-    if (viagem.observacoes && !grupos[key].observacoes) grupos[key].observacoes = viagem.observacoes;
-    if (viagem.horario && !grupos[key].horario) grupos[key].horario = viagem.horario;
-    if (viagem.cidade && !grupos[key].cidade) grupos[key].cidade = viagem.cidade;
+    if (viagem.papel === 'Motorista') grupos[key].motorista = viagem;
+    else if (!grupos[key].educadores.find((e: any) => e.nome_pessoa === viagem.nome_pessoa)) grupos[key].educadores.push(viagem);
   });
-  
-  return Object.values(grupos).sort((a: any, b: any) => {
-    const dateA = new Date(a.data_viagem).getTime();
-    const dateB = new Date(b.data_viagem).getTime();
-    if (dateA !== dateB) return dateB - dateA;
-    return b.id - a.id; 
-  });
+  return Object.values(grupos).sort((a: any, b: any) => new Date(b.data_viagem).getTime() - new Date(a.data_viagem).getTime() || b.id - a.id);
 };
 
 export default function Home() {
@@ -75,11 +55,12 @@ export default function Home() {
   const [motoristas, setMotoristas] = useState<any[]>([]);
   const [equipeTecnica, setEquipeTecnica] = useState<any[]>([]);
   const [relatorioGeral, setRelatorioGeral] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  
+  const [loadingInicial, setLoadingInicial] = useState(true);
   
   const [abaAtiva, setAbaAtiva] = useState<'plantoes' | 'motoristas' | 'tecnica'>('plantoes');
-  
   const [plantaoExpandido, setPlantaoExpandido] = useState<number | null>(null);
+  
   const [modalHistorico, setModalHistorico] = useState<any | null>(null);
   const [modalHistoricoGeral, setModalHistoricoGeral] = useState(false);
 
@@ -94,21 +75,27 @@ export default function Home() {
       setMotoristas(motoristas);
       setEquipeTecnica(equipeTecnica || []);
       setRelatorioGeral(relatorio);
-      setLoading(false);
+      setLoadingInicial(false);
     }
     carregar();
     const intervalo = setInterval(carregar, 30000);
     return () => clearInterval(intervalo);
   }, []);
 
-  if (loading) {
+  if (loadingInicial) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <div className="relative flex justify-center items-center">
-          <div className="absolute w-20 h-20 bg-indigo-400 rounded-full animate-ping opacity-20"></div>
-          <div className="w-14 h-14 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin z-10"></div>
+      <div className="min-h-screen bg-[#F4F7F9] p-6 animate-pulse overflow-hidden flex flex-col items-center">
+        <div className="w-full h-64 bg-slate-200 rounded-[3rem] mb-10 max-w-4xl mx-auto mt-10"></div>
+        <div className="flex gap-4 max-w-5xl mx-auto mb-10 w-full">
+          <div className="w-full sm:w-72 h-40 bg-slate-200 rounded-[2rem]"></div>
+          <div className="w-72 h-40 bg-slate-200 rounded-[2rem] hidden sm:block"></div>
         </div>
-        <p className="font-bold text-indigo-900/40 uppercase tracking-[0.2em] text-xs mt-6 animate-pulse">Iniciando Portal...</p>
+        <div className="w-full max-w-xl mx-auto h-16 bg-slate-200 rounded-full mb-10"></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl w-full mx-auto">
+          <div className="h-48 bg-slate-200 rounded-[2.5rem]"></div>
+          <div className="h-48 bg-slate-200 rounded-[2.5rem]"></div>
+          <div className="h-48 bg-slate-200 rounded-[2.5rem]"></div>
+        </div>
       </div>
     );
   }
@@ -131,11 +118,9 @@ export default function Home() {
   });
 
   return (
-    <main className="min-h-screen bg-[#F4F7F9] font-sans pb-24 text-slate-800 selection:bg-indigo-500 selection:text-white relative overflow-x-hidden">
+    <main className="min-h-screen bg-[#F4F7F9] font-sans pb-24 text-slate-800 overflow-x-hidden selection:bg-indigo-500 selection:text-white">
       
-      {/* ========================================================= */}
-      {/* MODAL HISTÓRICO GERAL (Pesquisa) - Glassmorphism          */}
-      {/* ========================================================= */}
+      {/* MODAL HISTÓRICO GERAL */}
       {modalHistoricoGeral && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden border border-white/50 transform scale-100 animate-in zoom-in-95">
@@ -196,7 +181,7 @@ export default function Home() {
                          {grupo.educadores.length > 0 ? (
                            <div className="flex flex-col gap-3">
                              {grupo.educadores.map((ed: any, i: number) => {
-                               const funcao = ed.equipe === 'Equipe Técnica' ? ed.papel : 'Educador';
+                               const funcao = ed.equipe === 'Equipe Técnica' ? ed.papel : 'Segurança';
                                return (
                                  <div key={i} className="flex items-center gap-3">
                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-sm border ${getCorFundoIcone(funcao)}`}>
@@ -238,9 +223,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ========================================================= */}
-      {/* MODAL HISTÓRICO INDIVIDUAL POR EQUIPE/PLANTÃO             */}
-      {/* ========================================================= */}
+      {/* MODAL HISTÓRICO DE FILA INDIVIDUAL */}
       {modalHistorico && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95">
@@ -271,7 +254,7 @@ export default function Home() {
                }
                {modalHistorico.servidores.filter((s: any) => s.ultima_viagem).length === 0 && (
                  <div className="text-center py-10">
-                   <p className="text-slate-400 font-bold text-sm">Nenhuma viagem registrada ainda.</p>
+                   <p className="text-slate-400 font-bold text-sm">Nenhuma viagem registada ainda.</p>
                  </div>
                )}
             </div>
@@ -280,15 +263,12 @@ export default function Home() {
       )}
 
 
-      {/* ========================================================= */}
-      {/* HEADER PRINCIPAL (HERO SECTION ESPETACULAR)                 */}
-      {/* ========================================================= */}
+      {/* HEADER PRINCIPAL (HERO SECTION) */}
       <div className="relative bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 pt-16 pb-36 px-6 text-center overflow-hidden border-b-4 border-indigo-500">
         <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-indigo-500/20 rounded-full mix-blend-screen filter blur-[80px] animate-pulse"></div>
         <div className="absolute bottom-[-20%] right-[-10%] w-[400px] h-[400px] bg-purple-500/20 rounded-full mix-blend-screen filter blur-[80px] animate-pulse" style={{ animationDelay: '2s' }}></div>
         
         <div className="relative z-10 max-w-4xl mx-auto flex flex-col items-center">
-          
           <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 text-indigo-200 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest mb-6 shadow-xl">
             <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -318,9 +298,7 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-20 -mt-16 space-y-10">
         
-        {/* ========================================================= */}
-        {/* ÚLTIMAS VIAGENS (Estilo Cards Horizontais "Tickets")        */}
-        {/* ========================================================= */}
+        {/* ÚLTIMAS VIAGENS (CARROSSEL) */}
         {ultimasViagensAgrupadas.length > 0 && (
           <section className="mb-14">
             <h3 className="font-black text-white/90 text-xs uppercase tracking-[0.2em] mb-4 pl-4 drop-shadow-md flex items-center gap-2">
@@ -352,7 +330,7 @@ export default function Home() {
                       )}
                       
                       {grupo.educadores.slice(0, 2).map((ed: any, i: number) => {
-                        const func = ed.equipe === 'Equipe Técnica' ? ed.papel : 'Educador';
+                        const func = ed.equipe === 'Equipe Técnica' ? ed.papel : 'Segurança';
                         return (
                           <div key={i} className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-sm border ${getCorFundoIcone(func)}`}>
@@ -375,9 +353,7 @@ export default function Home() {
           </section>
         )}
 
-        {/* ========================================================= */}
-        {/* NAVEGAÇÃO POR ABAS (TABS) - O Segredo da Tela Limpa       */}
-        {/* ========================================================= */}
+        {/* NAVEGAÇÃO POR ABAS FLUTUANTES */}
         <div className="flex justify-center md:justify-start mb-8 sticky top-4 z-50">
           <div className="bg-white/80 backdrop-blur-2xl p-2 rounded-[2rem] flex gap-2 overflow-x-auto w-full md:w-auto hide-scrollbar shadow-xl shadow-slate-200/50 border border-white">
             <button 
@@ -401,12 +377,10 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ========================================================= */}
-        {/* CONTEÚDO DINÂMICO DAS ABAS                                  */}
-        {/* ========================================================= */}
+        {/* CONTEÚDO DAS ABAS */}
         <div className="min-h-[50vh] pb-10">
           
-          {/* ABA 1: PLANTÕES (Educadores) */}
+          {/* ABA 1: PLANTÕES (Segurança) */}
           {abaAtiva === 'plantoes' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               {plantoes.map((plantao: any) => {
@@ -417,7 +391,6 @@ export default function Home() {
                 return (
                   <div key={plantao.id} className={`bg-white rounded-[2.5rem] overflow-hidden transition-all duration-300 border-2 ${deServicoHoje ? 'border-emerald-400 shadow-2xl shadow-emerald-900/10 transform hover:-translate-y-1' : 'border-slate-100 shadow-xl shadow-slate-200/40 hover:border-indigo-100 hover:shadow-indigo-900/5'}`}>
                     
-                    {/* Header do Card */}
                     <div className={`p-6 md:p-8 flex justify-between items-start ${deServicoHoje ? 'bg-gradient-to-br from-emerald-50 to-white' : 'bg-white'}`}>
                       <div>
                         <h2 className="text-2xl font-black text-slate-800 flex items-center gap-3 mb-2 tracking-tight">
@@ -441,7 +414,6 @@ export default function Home() {
                       </button>
                     </div>
 
-                    {/* Botão Expandir */}
                     <div className="px-6 pb-6">
                       <button 
                         onClick={() => setPlantaoExpandido(isExpandido ? null : plantao.id)} 
@@ -451,7 +423,6 @@ export default function Home() {
                       </button>
                     </div>
                     
-                    {/* Lista (Fila) */}
                     {isExpandido && (
                       <div className="bg-slate-50 p-4 border-t border-slate-100 rounded-b-[2.5rem]">
                         {plantao.servidores.map((s: any, idx: number) => {
@@ -472,7 +443,7 @@ export default function Home() {
                                   
                                   <div className="flex flex-col gap-1.5 mt-1.5">
                                     {s.data_folga ? (
-                                      <span className="inline-flex items-center gap-1 w-max text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 uppercase tracking-widest">
+                                      <span className="inline-flex items-center gap-1 w-max text-[10px] font-black text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-md border border-amber-200 uppercase tracking-widest">
                                         🌴 Folga: {s.data_folga}
                                       </span>
                                     ) : (
@@ -481,10 +452,9 @@ export default function Home() {
                                       </span>
                                     )}
                                     
-                                    {/* INFORMAÇÃO DA ÚLTIMA VIAGEM NA FILA */}
-                                    <span className="text-[9px] font-bold text-slate-400 flex items-center gap-1 uppercase tracking-widest truncate">
+                                    <span className="text-[9px] font-bold text-slate-400 flex items-center gap-1 uppercase tracking-widest mt-0.5">
                                       ⏱️ Última: <span className="text-slate-600">{s.ultima_viagem ? formatarParaBR(s.ultima_viagem) : 'Sem registo'}</span>
-                                      {s.destino_viagem && <span className="ml-1 bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-md hidden sm:inline-block">📍 {s.destino_viagem}</span>}
+                                      {s.destino_viagem && <span className="ml-1 bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-md truncate max-w-[80px]">📍 {s.destino_viagem}</span>}
                                     </span>
                                   </div>
                                 </div>
@@ -508,20 +478,17 @@ export default function Home() {
               
               {motoristas.map((m: any, idx: number) => (
                 <div key={m.id} className={`bg-white p-6 md:p-8 rounded-[2.5rem] border-2 flex items-center gap-5 transition-all duration-300 ${idx === 0 ? 'border-amber-400 shadow-2xl shadow-amber-900/10 bg-gradient-to-br from-amber-50/50 to-white transform hover:-translate-y-1' : 'border-slate-100 shadow-xl shadow-slate-200/40 hover:border-indigo-100'}`}>
-                  
                   <div className="relative">
                     {idx === 0 && <div className="absolute inset-0 bg-amber-400 rounded-[1.5rem] animate-ping opacity-25"></div>}
                     <span className={`relative w-16 h-16 flex items-center justify-center rounded-[1.5rem] font-black text-2xl shadow-sm ${idx === 0 ? 'bg-gradient-to-br from-amber-400 to-amber-500 text-white shadow-amber-500/40' : 'bg-slate-50 text-slate-400 border border-slate-200'}`}>
                       {idx + 1}º
                     </span>
                   </div>
-                  
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-col gap-1 items-start mb-2">
                       {idx === 0 && <span className="text-[9px] bg-amber-500 text-white px-2 py-0.5 rounded-md uppercase font-black tracking-widest shadow-sm">Na Vez</span>}
                       <p className={`font-black text-xl truncate w-full tracking-tight ${idx === 0 ? 'text-amber-950' : 'text-slate-800'}`}>{m.nome}</p>
                     </div>
-                    
                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex flex-col gap-1">
                       <span className="flex items-center gap-1.5 opacity-80"><span>⏱️</span> {m.ultima_viagem ? formatarParaBR(m.ultima_viagem) : 'Sem registo'}</span>
                       {m.destino_viagem && <span className="bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 text-slate-600 w-max truncate max-w-full">📍 {m.destino_viagem}</span>}
@@ -541,11 +508,9 @@ export default function Home() {
                 const corFundo = getCorFundoIcone(t.funcao);
                 return (
                   <div key={t.id} className={`bg-white p-6 md:p-8 rounded-[2.5rem] border-2 flex items-center gap-5 transition-all duration-300 ${idx === 0 ? 'border-purple-400 shadow-2xl shadow-purple-900/10 bg-gradient-to-br from-purple-50/50 to-white transform hover:-translate-y-1' : 'border-slate-100 shadow-xl shadow-slate-200/40 hover:border-indigo-100'}`}>
-                    
                     <span className={`flex-shrink-0 w-16 h-16 flex items-center justify-center rounded-[1.5rem] font-black text-2xl shadow-sm ${idx === 0 ? 'bg-gradient-to-br from-purple-500 to-purple-600 text-white shadow-purple-500/40' : 'bg-slate-50 text-slate-400 border border-slate-200'}`}>
                       {t.posicao_fila}º
                     </span>
-                    
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-2">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-sm border ${corFundo}`}>
@@ -553,7 +518,6 @@ export default function Home() {
                         </div>
                         <p className="font-black text-slate-800 text-lg truncate flex-1 tracking-tight">{t.nome}</p>
                       </div>
-                      
                       <div className="flex flex-col gap-2 items-start mt-3">
                         <span className="text-[9px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-1 rounded-md font-black uppercase tracking-widest shadow-sm">
                           {t.funcao}
@@ -568,11 +532,10 @@ export default function Home() {
               })}
             </div>
           )}
-
         </div>
       </div>
 
-      {/* Estilo Global Anti-Scrollbar Horizontal */}
+      {/* Estilo Global Anti-Scrollbar */}
       <style dangerouslySetContent={{__html: `
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
