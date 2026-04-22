@@ -91,6 +91,7 @@ export default function AdminPage() {
   const [relatorio, setRelatorio] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // FILTROS FINANCEIROS
   const hoje = new Date();
   const [filtroMes, setFiltroMes] = useState((hoje.getMonth() + 1).toString().padStart(2, '0'));
   const [filtroAno, setFiltroAno] = useState(hoje.getFullYear().toString());
@@ -553,6 +554,7 @@ export default function AdminPage() {
             
             <div className="flex flex-col gap-4 mb-6 text-left max-h-[55vh] overflow-y-auto pr-2 custom-scrollbar">
               
+              {/* BLOCO 1: SELECIONAR EQUIPE */}
               <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 space-y-4">
                 <h4 className="text-[10px] uppercase font-black text-slate-500 tracking-widest border-b border-slate-800 pb-2">1. Composição da Equipe</h4>
                 
@@ -1030,7 +1032,7 @@ export default function AdminPage() {
       </div>
       
       {/* CSS Customizado Scrollbar */}
-      <style dangerouslySetContent={{__html: `
+      <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(51, 65, 85, 1); border-radius: 10px; }
