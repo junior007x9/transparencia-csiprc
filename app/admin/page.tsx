@@ -464,6 +464,21 @@ export default function AdminPage() {
     }
   };
 
+  const handleAtualizarEscala = async (plantaoId: number, plantaoNome: string) => {
+    const opcao = prompt(
+      `Definir escala para a equipe ${plantaoNome}:\n\n1 - Dias Ímpares\n2 - Dias Pares\n3 - Remover Escala\n\nDigite o número da opção desejada:`
+    );
+    
+    let novaEscala = null;
+    if (opcao === "1") novaEscala = "Dias Ímpares";
+    else if (opcao === "2") novaEscala = "Dias Pares";
+    else if (opcao === "3") novaEscala = null;
+    else return;
+
+    await atualizarDiasPlantao(plantaoId, novaEscala);
+    carregar();
+  };
+
   if (loading) return <div className="min-h-screen bg-[#020617] flex justify-center items-center"><div className="w-16 h-16 border-4 border-slate-800 border-t-emerald-500 rounded-full animate-spin"></div></div>;
 
   const historicoAgrupado = agruparViagens(relatorio);
@@ -951,6 +966,7 @@ export default function AdminPage() {
                   </div>
                   
                   <div className="flex flex-wrap items-center gap-3">
+                    <button onClick={() => handleAtualizarEscala(plantao.id, plantao.nome)} className="bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 px-5 py-3 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all active:scale-95">📅 Definir Escala</button>
                     <button onClick={() => handleAdicionarMembro(plantao.id, plantao.nome)} className="bg-white/10 hover:bg-white/20 text-white border border-white/10 px-5 py-3 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all active:scale-95">➕ Add Educador</button>
                     {!ePortaria && plantao.servidores.length >= 2 && (
                       <button onClick={() => abrirModalViagem('dupla', 0, plantao.id, nomeDupla)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-indigo-900/50 active:scale-95 flex items-center gap-2"><span>✈️</span> Lançar Dupla</button>
