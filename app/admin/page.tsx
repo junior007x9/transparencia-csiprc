@@ -463,17 +463,35 @@ export default function AdminPage() {
     }
   };
 
-  // === CORREÇÃO DO ERRO TYPE SCRIPT AQUI ===
+  // === MÁQUINA DE ESCALAS ATUALIZADA (COM DIAS DO MÊS) ===
   const handleAtualizarEscala = async (plantaoId: number, plantaoNome: string) => {
+    const hoje = new Date();
+    // Descobre o nome do mês (ex: Maio, Junho)
+    const nomeMes = hoje.toLocaleString('pt-BR', { month: 'long' }).toUpperCase();
+    const ano = hoje.getFullYear();
+    
+    // Descobre qual é o último dia desse mês (se é 28, 30 ou 31)
+    const ultimoDia = new Date(ano, hoje.getMonth() + 1, 0).getDate();
+    
+    const impares = [];
+    const pares = [];
+    for (let i = 1; i <= ultimoDia; i++) {
+      if (i % 2 === 0) pares.push(i);
+      else impares.push(i);
+    }
+
     const opcao = prompt(
-      `Definir escala para a equipe ${plantaoNome}:\n\n1 - Dias Ímpares\n2 - Dias Pares\n3 - Remover Escala\n\nDigite o número da opção desejada:`
+      `Definir escala para a equipe ${plantaoNome} em ${nomeMes}/${ano}:\n\n` +
+      `1 - Dias Ímpares\n(Dias: ${impares.join(', ')})\n\n` +
+      `2 - Dias Pares\n(Dias: ${pares.join(', ')})\n\n` +
+      `3 - Remover Escala\n\n` +
+      `Digite o número da opção desejada:`
     );
     
-    // Agora ele inicia como texto vazio em vez de null
     let novaEscala = "";
     if (opcao === "1") novaEscala = "Dias Ímpares";
     else if (opcao === "2") novaEscala = "Dias Pares";
-    else if (opcao === "3") novaEscala = ""; // Envia texto vazio para limpar
+    else if (opcao === "3") novaEscala = ""; // Remove a escala de forma segura (Sem o NULL)
     else return;
 
     await atualizarDiasPlantao(plantaoId, novaEscala);
