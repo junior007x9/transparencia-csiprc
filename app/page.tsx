@@ -118,7 +118,7 @@ export default function Home() {
   });
 
   return (
-    <main className="min-h-screen bg-[#F4F7F9] font-sans pb-24 text-slate-800 overflow-x-hidden selection:bg-indigo-500 selection:text-white">
+    <main className="min-h-screen bg-[#F4F7F9] font-sans text-slate-800 overflow-x-hidden selection:bg-indigo-500 selection:text-white flex flex-col">
       
       {/* MODAL HISTÓRICO GERAL */}
       {modalHistoricoGeral && (
@@ -262,7 +262,6 @@ export default function Home() {
         </div>
       )}
 
-
       {/* HEADER PRINCIPAL (HERO SECTION) */}
       <div className="relative bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 pt-16 pb-36 px-6 text-center overflow-hidden border-b-4 border-indigo-500">
         <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-indigo-500/20 rounded-full mix-blend-screen filter blur-[80px] animate-pulse"></div>
@@ -296,7 +295,7 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-20 -mt-16 space-y-10">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-20 -mt-16 space-y-10 flex-1">
         
         {/* ÚLTIMAS VIAGENS (CARROSSEL) */}
         {ultimasViagensAgrupadas.length > 0 && (
@@ -534,6 +533,18 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* === NOVO RODAPÉ DE CRÉDITOS AQUI === */}
+      <footer className="w-full mt-auto py-8 text-center border-t border-slate-200/60 bg-white/30 backdrop-blur-md relative z-10">
+        <div className="inline-flex items-center gap-3 bg-white px-5 py-2.5 rounded-full shadow-sm border border-slate-200/80">
+          <span className="text-xl">✨</span>
+          <p className="text-[10px] sm:text-xs font-black text-slate-500 tracking-widest uppercase">
+            Desenvolvido e entregue por <span className="text-indigo-600 ml-1">JUNIOR SANTOS</span> 
+            <span className="hidden sm:inline text-slate-300 mx-2">|</span> 
+            <span className="block sm:inline mt-1 sm:mt-0 text-slate-400">Socioeducador da Unidade CSIPRC</span>
+          </p>
+        </div>
+      </footer>
 
       {/* Estilo Global Anti-Scrollbar */}
       <style dangerouslySetInnerHTML={{__html: `
