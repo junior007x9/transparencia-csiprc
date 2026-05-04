@@ -360,7 +360,6 @@ export default function AdminPage() {
     setRelatorioGerado(msg);
   };
 
-  // EXPORTAR EXCEL, EDIÇÃO E FUNÇÕES FALTANTES
   const handleSalvarEdicao = async () => {
     if (!modalEditar) return;
     for (const id of modalEditar.ids_para_excluir) {
@@ -464,15 +463,17 @@ export default function AdminPage() {
     }
   };
 
+  // === CORREÇÃO DO ERRO TYPE SCRIPT AQUI ===
   const handleAtualizarEscala = async (plantaoId: number, plantaoNome: string) => {
     const opcao = prompt(
       `Definir escala para a equipe ${plantaoNome}:\n\n1 - Dias Ímpares\n2 - Dias Pares\n3 - Remover Escala\n\nDigite o número da opção desejada:`
     );
     
-    let novaEscala = null;
+    // Agora ele inicia como texto vazio em vez de null
+    let novaEscala = "";
     if (opcao === "1") novaEscala = "Dias Ímpares";
     else if (opcao === "2") novaEscala = "Dias Pares";
-    else if (opcao === "3") novaEscala = null;
+    else if (opcao === "3") novaEscala = ""; // Envia texto vazio para limpar
     else return;
 
     await atualizarDiasPlantao(plantaoId, novaEscala);
