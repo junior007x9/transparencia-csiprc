@@ -1,11 +1,103 @@
 "use server";
 
 import { createClient } from "@libsql/client";
+import { cookies } from "next/headers";
+import bcrypt from "bcryptjs";
 
 const client = createClient({
   url: process.env.TURSO_DATABASE_URL as string,
   authToken: process.env.TURSO_AUTH_TOKEN as string,
 });
+
+// ============================================================================
+// GESTÃO DE AUTENTICAÇÃO E USUÁRIOS
+// ============================================================================
+
+export async function fazerLogin(email: string, senhaPlana: string) {
+  try {
+    const res = await client.execute({
+      sql: "SELECT * FROM usuarios WHERE email = ?",
+      args: [email]
+    });
+
+    if (res.rows.length === 0) return { error: "E-mail ou senha incorretos!" };
+
+    const usuario = res.rows[0];
+    const senhaValida = await bcrypt.compare(senhaPlana, usuario.senha as string);
+
+    if (!senhaValida) return { error: "E-mail ou senha incorretos!" };
+
+    const sessaoData = JSON.stringify({
+      id: usuario.id,
+      nome: usuario.nome,
+      email: usuario.email,
+      isAdmin: usuario.is_admin === 1
+    });
+    
+    const cookieStore = await cookies();
+    cookieStore.set("csiprc_session", sessaoData, { 
+      httpOnly: true, 
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60 * 24, 
+      path: "/" 
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error(error);
+    return { error: "Erro interno no servidor." };
+  }
+}
+
+export async function fazerLogout() {
+  const cookieStore = await cookies();
+  cookieStore.delete("csiprc_session");
+  return { success: true };
+}
+
+export async function obterSessaoAtual() {
+  const cookieStore = await cookies();
+  const session = cookieStore.get("csiprc_session");
+  if (!session) return null;
+  return JSON.parse(session.value);
+}
+
+export async function listarUsuarios() {
+  try {
+    const res = await client.execute("SELECT id, nome, email, is_admin FROM usuarios ORDER BY nome ASC");
+    return res.rows;
+  } catch (e) {
+    return [];
+  }
+}
+
+export async function criarUsuario(nome: string, email: string, senhaPlana: string, isAdmin: boolean) {
+  try {
+    const salt = await bcrypt.genSalt(10);
+    const senhaCriptografada = await bcrypt.hash(senhaPlana, salt);
+    
+    await client.execute({
+      sql: "INSERT INTO usuarios (nome, email, senha, is_admin) VALUES (?, ?, ?, ?)",
+      args: [nome, email, senhaCriptografada, isAdmin ? 1 : 0]
+    });
+    return { success: true };
+  } catch (error) {
+    return { error: "Erro ao criar utilizador. O e-mail já pode estar em uso." };
+  }
+}
+
+export async function removerUsuario(id: number) {
+  try {
+    await client.execute({ sql: "DELETE FROM usuarios WHERE id = ?", args: [id] });
+    return { success: true };
+  } catch (e) {
+    return { error: "Erro ao remover utilizador." };
+  }
+}
+
+// ============================================================================
+// FUNÇÕES ORIGINAIS DO SISTEMA DE ESCALAS E VIAGENS
+// ============================================================================
 
 export async function verificarSenhaAdmin(senha: string) {
   const senhaReal = process.env.ADMIN_PASSWORD || "admin123";
@@ -54,7 +146,6 @@ export async function limparTodoHistorico() {
   return { success: true };
 }
 
-// NOVA FUNÇÃO: EDITAR VIAGEM
 export async function editarViagemHistorico(id: number, dados: any) {
   const fields = Object.keys(dados).map(key => `${key} = ?`).join(", ");
   await client.execute({ 

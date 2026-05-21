@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { 
   getDadosCompletos, registrarViagem, registrarViagemDupla, registrarViagemMotorista, 
   atualizarServidor, atualizarMotorista, configurarEscalaAutomatica, atualizarDiasPlantao, 
   corrigirNumeracaoFilas, adicionarServidor, removerServidor, zerarHistoricoViagens, 
-  getRelatorioViagens, excluirViagemHistorico, verificarSenhaAdmin, reordenarFila, limparTodoHistorico,
+  getRelatorioViagens, excluirViagemHistorico, reordenarFila, limparTodoHistorico,
   adicionarEquipeTecnica, removerEquipeTecnica, atualizarEquipeTecnica, registrarViagemEquipeTecnica,
-  editarViagemHistorico
+  editarViagemHistorico, obterSessaoAtual, fazerLogout, listarUsuarios, criarUsuario, removerUsuario
 } from "../actions";
 
 const formatarParaBR = (dataString: string | null) => {
@@ -81,9 +82,17 @@ const agruparViagens = (viagens: any[]) => {
 };
 
 export default function AdminPage() {
-  const [autenticado, setAutenticado] = useState(false);
-  const [senhaInput, setSenhaInput] = useState("");
-  const [loginError, setLoginError] = useState("");
+  const router = useRouter();
+  const [usuarioAtual, setUsuarioAtual] = useState<any>(null);
+  const [usuariosSistema, setUsuariosSistema] = useState<any[]>([]);
+  const [modalUsuarios, setModalUsuarios] = useState(false);
+
+  // Estados Formulário de Novo Utilizador
+  const [novoNome, setNovoNome] = useState("");
+  const [novoEmail, setNovoEmail] = useState("");
+  const [novoSenha, setNovoSenha] = useState("");
+  const [novoIsAdmin, setNovoIsAdmin] = useState(false);
+  const [erroUser, setErroUser] = useState("");
 
   const [plantoes, setPlantoes] = useState<any[]>([]);
   const [motoristas, setMotoristas] = useState<any[]>([]);
@@ -128,36 +137,64 @@ export default function AdminPage() {
     setLoading(false);
   };
 
-  useEffect(() => { if (autenticado) carregar(); }, [autenticado]);
+  useEffect(() => {
+    const verificarSessao = async () => {
+      const sessao = await obterSessaoAtual();
+      if (!sessao) {
+        router.push("/login");
+        return;
+      }
+      setUsuarioAtual(sessao);
+    };
+    verificarSessao();
+  }, [router]);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const isValid = await verificarSenhaAdmin(senhaInput);
-    if (isValid) {
-      setAutenticado(true);
-      setLoginError("");
-    } else {
-      setLoginError("Senha incorreta! Tente novamente.");
+  useEffect(() => {
+    if (usuarioAtual) {
+      carregar();
     }
-  };
+  }, [usuarioAtual]);
 
-  if (!autenticado) {
+  if (!usuarioAtual) {
     return (
-      <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4 relative overflow-hidden">
-        <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[100px] pointer-events-none"></div>
-        <div className="absolute bottom-[-20%] right-[-10%] w-[400px] h-[400px] bg-teal-500/10 rounded-full blur-[100px] pointer-events-none"></div>
-        
-        <form onSubmit={handleLogin} className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 p-8 md:p-10 rounded-[2.5rem] shadow-2xl max-w-sm w-full text-center transform transition-all hover:scale-105 relative z-10">
-          <div className="text-6xl mb-6 animate-bounce drop-shadow-lg">🔐</div>
-          <h1 className="text-2xl font-black text-white mb-2 uppercase tracking-widest">Acesso Restrito</h1>
-          <p className="text-emerald-400 text-xs mb-8 uppercase tracking-widest font-bold">Central de Gestão CSIPRC</p>
-          <input type="password" placeholder="Digite a senha" value={senhaInput} onChange={(e) => setSenhaInput(e.target.value)} className="w-full bg-slate-950/50 border border-slate-700 text-white px-5 py-4 rounded-2xl mb-4 text-center focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none tracking-widest font-medium transition-all" />
-          {loginError && <p className="text-red-400 text-xs font-bold mb-4 animate-pulse">{loginError}</p>}
-          <button type="submit" className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black uppercase tracking-widest py-4 rounded-2xl transition-all shadow-lg shadow-emerald-900/50 active:scale-95 mt-2">Entrar no Sistema</button>
-        </form>
+      <div className="min-h-screen bg-[#020617] flex justify-center items-center">
+        <div className="w-16 h-16 border-4 border-slate-800 border-t-emerald-500 rounded-full animate-spin"></div>
       </div>
     );
   }
+
+  // --- GESTÃO DE USUÁRIOS ---
+  const abrirModalUsuarios = async () => {
+    const lista = await listarUsuarios();
+    setUsuariosSistema(lista);
+    setModalUsuarios(true);
+  };
+
+  const handleSalvarUsuario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErroUser("");
+    const res = await criarUsuario(novoNome, novoEmail, novoSenha, novoIsAdmin);
+    if (res.error) {
+      setErroUser(res.error);
+    } else {
+      setNovoNome(""); setNovoEmail(""); setNovoSenha(""); setNovoIsAdmin(false);
+      const lista = await listarUsuarios();
+      setUsuariosSistema(lista);
+    }
+  };
+
+  const handleDeletarUsuario = async (id: number, nome: string) => {
+    if (id === usuarioAtual.id) {
+      alert("Não pode remover o seu próprio acesso!");
+      return;
+    }
+    if (confirm(`Remover permanentemente o acesso de ${nome}?`)) {
+      await removerUsuario(id);
+      const lista = await listarUsuarios();
+      setUsuariosSistema(lista);
+    }
+  };
+  // --------------------------
 
   const onDragStart = (e: any, index: number, itemType: string, groupId: number | string) => {
     e.dataTransfer.effectAllowed = "move";
@@ -385,20 +422,6 @@ export default function AdminPage() {
     link.click();
   };
 
-  const handleExcluirViagemCompleta = async (ids: number[]) => {
-    if (confirm("Deseja APAGAR permanentemente TODO ESSE GRUPO (esta viagem inteira) do histórico?")) { 
-      for(const id of ids) { await excluirViagemHistorico(id); }
-      carregar(); 
-    }
-  };
-
-  const handleRemoverPessoaDaViagem = async (idViagem: number, nome: string) => {
-    if (confirm(`Deseja remover APENAS "${nome}" deste lançamento de viagem?`)) {
-      await excluirViagemHistorico(idViagem);
-      carregar();
-    }
-  };
-
   const handleLimparTodoHistorico = async () => {
     if (confirm("⚠️ TEM A CERTEZA ABSOLUTA? Isto vai apagar TODAS as viagens guardadas no histórico permanentemente. Não há como reverter!")) {
       await limparTodoHistorico();
@@ -463,14 +486,10 @@ export default function AdminPage() {
     }
   };
 
-  // === MÁQUINA DE ESCALAS ATUALIZADA (COM DIAS DO MÊS) ===
   const handleAtualizarEscala = async (plantaoId: number, plantaoNome: string) => {
     const hoje = new Date();
-    // Descobre o nome do mês (ex: Maio, Junho)
     const nomeMes = hoje.toLocaleString('pt-BR', { month: 'long' }).toUpperCase();
     const ano = hoje.getFullYear();
-    
-    // Descobre qual é o último dia desse mês (se é 28, 30 ou 31)
     const ultimoDia = new Date(ano, hoje.getMonth() + 1, 0).getDate();
     
     const impares = [];
@@ -491,7 +510,7 @@ export default function AdminPage() {
     let novaEscala = "";
     if (opcao === "1") novaEscala = "Dias Ímpares";
     else if (opcao === "2") novaEscala = "Dias Pares";
-    else if (opcao === "3") novaEscala = ""; // Remove a escala de forma segura (Sem o NULL)
+    else if (opcao === "3") novaEscala = "";
     else return;
 
     await atualizarDiasPlantao(plantaoId, novaEscala);
@@ -518,6 +537,63 @@ export default function AdminPage() {
       {/* EFEITOS DE FUNDO */}
       <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-emerald-900/20 to-transparent pointer-events-none"></div>
       <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none"></div>
+
+      {/* MODAL DE GESTÃO DE ACESSOS (EXCLUSIVO ADMIN) */}
+      {modalUsuarios && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 md:p-8 bg-black/90 backdrop-blur-md animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-4xl h-[85vh] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95">
+            <div className="bg-slate-950 p-6 border-b border-slate-800 flex justify-between items-center">
+              <div>
+                <h3 className="font-black text-xl text-white uppercase tracking-widest flex items-center gap-2">👥 Controle de Acessos</h3>
+                <p className="text-slate-500 text-xs mt-1">Gerencie quem pode logar e os níveis de privilégio.</p>
+              </div>
+              <button onClick={() => setModalUsuarios(false)} className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl font-bold text-xs uppercase tracking-widest transition-all">✕ Fechar</button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-5 flex-1 overflow-hidden">
+              {/* FORMULÁRIO DE CADASTRO */}
+              <form onSubmit={handleSalvarUsuario} className="lg:col-span-2 p-6 bg-slate-950/40 border-r border-slate-800 space-y-4 overflow-y-auto">
+                <h4 className="text-xs uppercase font-black text-emerald-400 tracking-wider">Cadastrar Novo Usuário</h4>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-400">Nome</label>
+                  <input type="text" required value={novoNome} onChange={e => setNovoNome(e.target.value)} className="w-full mt-1 bg-slate-900 border border-slate-700 text-white p-2.5 rounded-xl text-sm outline-none focus:border-emerald-500" />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-400">E-mail</label>
+                  <input type="email" required value={novoEmail} onChange={e => setNovoEmail(e.target.value)} className="w-full mt-1 bg-slate-900 border border-slate-700 text-white p-2.5 rounded-xl text-sm outline-none focus:border-emerald-500" />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-400">Senha</label>
+                  <input type="password" required value={novoSenha} onChange={e => setNovoSenha(e.target.value)} className="w-full mt-1 bg-slate-900 border border-slate-700 text-white p-2.5 rounded-xl text-sm outline-none focus:border-emerald-500" />
+                </div>
+                <div className="flex items-center gap-3 pt-2">
+                  <input type="checkbox" id="adminCheck" checked={novoIsAdmin} onChange={e => setNovoIsAdmin(e.target.checked)} className="w-4 h-4 rounded text-emerald-500 bg-slate-900 border-slate-700" />
+                  <label htmlFor="adminCheck" className="text-xs font-bold text-slate-300 cursor-pointer uppercase">Privilégio Administrador</label>
+                </div>
+                {erroUser && <p className="text-red-400 text-xs font-bold">{erroUser}</p>}
+                <button type="submit" className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-xs tracking-widest rounded-xl transition-all shadow-lg active:scale-95">Salvar Acesso</button>
+              </form>
+
+              {/* LISTA DE LOGINS ATIVOS */}
+              <div className="lg:col-span-3 p-6 overflow-y-auto space-y-3">
+                <h4 className="text-xs uppercase font-black text-slate-400 tracking-wider">Acessos Cadastrados</h4>
+                {usuariosSistema.map((user: any) => (
+                  <div key={user.id} className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl flex justify-between items-center">
+                    <div>
+                      <p className="font-bold text-white text-sm flex items-center gap-2">
+                        {user.nome} 
+                        {user.is_admin === 1 && <span className="text-[8px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.5 rounded font-black uppercase">Admin</span>}
+                      </p>
+                      <p className="text-xs text-slate-500 font-mono">{user.email}</p>
+                    </div>
+                    <button type="button" onClick={() => handleDeletarUsuario(user.id, user.nome)} className="text-red-500/60 hover:text-red-400 text-xs font-black uppercase tracking-widest bg-red-950/20 border border-red-900/30 px-3 py-2 rounded-xl transition-colors">Remover</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE SUCESSO E RESUMO */}
       {relatorioGerado && (
@@ -588,7 +664,6 @@ export default function AdminPage() {
             
             <div className="flex flex-col gap-4 mb-6 text-left max-h-[55vh] overflow-y-auto pr-2 custom-scrollbar">
               
-              {/* BLOCO 1: SELECIONAR EQUIPE */}
               <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 space-y-4">
                 <h4 className="text-[10px] uppercase font-black text-slate-500 tracking-widest border-b border-slate-800 pb-2">1. Composição da Equipe</h4>
                 
@@ -850,15 +925,22 @@ export default function AdminPage() {
           <div>
             <div className="flex items-center gap-3 mb-3">
               <span className="flex h-3 w-3 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-40"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]"></span></span>
-              <span className="text-[10px] text-emerald-400 font-black uppercase tracking-widest border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 rounded-md shadow-sm">Modo Gestão Seguro</span>
+              <span className="text-[10px] text-emerald-400 font-black uppercase tracking-widest border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 rounded-md shadow-sm">
+                Logado como: {usuarioAtual.nome} {usuarioAtual.isAdmin && "(Admin)"}
+              </span>
             </div>
             <h1 className="text-3xl md:text-5xl font-black text-white uppercase tracking-tighter drop-shadow-md">Central CSIPRC</h1>
           </div>
           <div className="flex flex-wrap gap-3 w-full md:w-auto">
+            {usuarioAtual.isAdmin && (
+              <button onClick={abrirModalUsuarios} className="bg-purple-600 hover:bg-purple-500 text-white px-5 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg flex items-center gap-2 active:scale-95">
+                👥 Controle de Acessos
+              </button>
+            )}
             <button onClick={() => setModalRelatorio(true)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-indigo-900/50 flex items-center gap-2 active:scale-95"><span>📊</span> Dashboard Financeiro</button>
             <button onClick={handleZerarHistorico} className="bg-red-900/40 hover:bg-red-600/80 border border-red-500/50 text-red-100 px-5 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all active:scale-95">⚠️ Zerar Listas</button>
             <button onClick={handleRepararFilas} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white px-5 py-3.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all active:scale-95">🛠️ Reparar Fila</button>
-            <button onClick={() => {setAutenticado(false); setSenhaInput("");}} className="bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 px-5 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all active:scale-95">🚪 Sair</button>
+            <button onClick={async () => { await fazerLogout(); router.push("/login"); }} className="bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 px-5 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all active:scale-95">🚪 Sair</button>
           </div>
         </header>
 
