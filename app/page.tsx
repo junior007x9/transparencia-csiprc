@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getDadosCompletos, getRelatorioViagens } from "./actions";
+import { useRouter } from "next/navigation";
+import { getDadosCompletos, getRelatorioViagens, obterSessaoAtual, fazerLogout } from "./actions";
 
 const formatarParaBR = (dataString: string | null) => {
   if (!dataString) return "";
@@ -51,6 +52,9 @@ const agruparViagens = (viagens: any[]) => {
 };
 
 export default function Home() {
+  const router = useRouter();
+  const [usuarioAtual, setUsuarioAtual] = useState<any>(null);
+  
   const [plantoes, setPlantoes] = useState<any[]>([]);
   const [motoristas, setMotoristas] = useState<any[]>([]);
   const [equipeTecnica, setEquipeTecnica] = useState<any[]>([]);
@@ -67,7 +71,23 @@ export default function Home() {
   const [filtroNome, setFiltroNome] = useState("");
   const [filtroData, setFiltroData] = useState("");
 
+  // 1. Verifica se a pessoa está autenticada
   useEffect(() => {
+    const verificarSessao = async () => {
+      const sessao = await obterSessaoAtual();
+      if (!sessao) {
+        router.push("/login"); // Expulsa se não tiver logado
+        return;
+      }
+      setUsuarioAtual(sessao);
+    };
+    verificarSessao();
+  }, [router]);
+
+  // 2. Só carrega os dados se a pessoa estiver autenticada
+  useEffect(() => {
+    if (!usuarioAtual) return;
+
     async function carregar() {
       const { plantoes, motoristas, equipeTecnica } = await getDadosCompletos();
       const relatorio = await getRelatorioViagens(); 
@@ -80,9 +100,9 @@ export default function Home() {
     carregar();
     const intervalo = setInterval(carregar, 30000);
     return () => clearInterval(intervalo);
-  }, []);
+  }, [usuarioAtual]);
 
-  if (loadingInicial) {
+  if (!usuarioAtual || loadingInicial) {
     return (
       <div className="min-h-screen bg-[#F4F7F9] p-6 animate-pulse overflow-hidden flex flex-col items-center">
         <div className="w-full h-64 bg-slate-200 rounded-[3rem] mb-10 max-w-4xl mx-auto mt-10"></div>
@@ -116,6 +136,11 @@ export default function Home() {
     const matchData = filtroData === "" || grupo.data_viagem === filtroData;
     return matchNome && matchData;
   });
+
+  const lidarComLogout = async () => {
+    await fazerLogout();
+    router.push("/login");
+  };
 
   return (
     <main className="min-h-screen bg-[#F4F7F9] font-sans text-slate-800 overflow-x-hidden selection:bg-indigo-500 selection:text-white flex flex-col">
@@ -273,7 +298,7 @@ export default function Home() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 sm:h-2.5 sm:w-2.5 bg-emerald-400"></span>
             </span>
-            Sincronizado em Tempo Real
+            Conectado de forma segura como: {usuarioAtual?.nome}
           </div>
           
           <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-100 to-slate-300 tracking-tighter mb-3 sm:mb-4 drop-shadow-lg">
@@ -284,14 +309,31 @@ export default function Home() {
             O centro de comando unificado para acompanhamento de escalas, plantões e fila de viagens do CSIPRC.
           </p>
           
-          <button 
-            onClick={() => setModalHistoricoGeral(true)} 
-            className="group relative inline-flex items-center justify-center gap-2 sm:gap-3 bg-white text-indigo-900 font-black text-xs sm:text-sm md:text-base px-6 sm:px-8 py-3.5 sm:py-4 rounded-full shadow-[0_0_40px_rgba(255,255,255,0.2)] hover:shadow-[0_0_60px_rgba(255,255,255,0.4)] transition-all duration-300 hover:-translate-y-1 active:scale-95 border border-white/50 overflow-hidden w-[90%] sm:w-auto"
-          >
-            <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-indigo-100 to-white opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <span className="relative z-10 text-lg sm:text-xl">🔍</span>
-            <span className="relative z-10 uppercase tracking-widest truncate">Pesquisar Histórico</span>
-          </button>
+          {/* BOTÕES DE NAVEGAÇÃO E AÇÃO */}
+          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 w-full">
+            <button 
+              onClick={() => setModalHistoricoGeral(true)} 
+              className="group relative inline-flex items-center justify-center gap-2 sm:gap-3 bg-white text-indigo-900 font-black text-xs sm:text-sm md:text-base px-6 sm:px-8 py-3.5 sm:py-4 rounded-full shadow-[0_0_40px_rgba(255,255,255,0.2)] hover:shadow-[0_0_60px_rgba(255,255,255,0.4)] transition-all duration-300 hover:-translate-y-1 active:scale-95 border border-white/50 overflow-hidden w-[90%] sm:w-auto"
+            >
+              <span className="relative z-10 text-lg sm:text-xl">🔍</span>
+              <span className="relative z-10 uppercase tracking-widest truncate">Pesquisar Histórico</span>
+            </button>
+
+            <button 
+              onClick={() => router.push('/admin')} 
+              className="group relative inline-flex items-center justify-center gap-2 sm:gap-3 bg-indigo-600 text-white font-black text-xs sm:text-sm md:text-base px-6 sm:px-8 py-3.5 sm:py-4 rounded-full shadow-[0_0_40px_rgba(79,70,229,0.3)] hover:shadow-[0_0_60px_rgba(79,70,229,0.5)] transition-all duration-300 hover:-translate-y-1 active:scale-95 border border-indigo-500 overflow-hidden w-[90%] sm:w-auto"
+            >
+              <span className="relative z-10 text-lg sm:text-xl">⚙️</span>
+              <span className="relative z-10 uppercase tracking-widest truncate">Painel de Gestão</span>
+            </button>
+
+            <button 
+              onClick={lidarComLogout} 
+              className="group relative inline-flex items-center justify-center gap-2 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 font-black text-xs sm:text-sm px-6 sm:px-8 py-3.5 sm:py-4 rounded-full transition-all duration-300 active:scale-95 border border-slate-700 w-[90%] sm:w-auto"
+            >
+              <span className="relative z-10 uppercase tracking-widest truncate">Sair</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -535,7 +577,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* === NOVO RODAPÉ DE CRÉDITOS AQUI (RESPONSIVO) === */}
+      {/* RODAPÉ DE CRÉDITOS */}
       <footer className="w-full mt-auto py-6 sm:py-8 text-center border-t border-slate-200/60 bg-white/30 backdrop-blur-md relative z-10 px-4">
         <div className="inline-flex flex-col sm:flex-row items-center gap-2 sm:gap-3 bg-white px-5 py-3 sm:py-2.5 rounded-2xl sm:rounded-full shadow-sm border border-slate-200/80 max-w-full">
           <span className="text-xl hidden sm:block">✨</span>
