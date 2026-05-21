@@ -71,12 +71,12 @@ export default function Home() {
   const [filtroNome, setFiltroNome] = useState("");
   const [filtroData, setFiltroData] = useState("");
 
-  // 1. Verifica se a pessoa está autenticada
+  // 1. Verifica a autenticação ao carregar a página
   useEffect(() => {
     const verificarSessao = async () => {
       const sessao = await obterSessaoAtual();
       if (!sessao) {
-        router.push("/login"); // Expulsa se não tiver logado
+        router.push("/login");
         return;
       }
       setUsuarioAtual(sessao);
@@ -84,7 +84,7 @@ export default function Home() {
     verificarSessao();
   }, [router]);
 
-  // 2. Só carrega os dados se a pessoa estiver autenticada
+  // 2. Carrega as informações se a sessão for confirmada
   useEffect(() => {
     if (!usuarioAtual) return;
 
@@ -180,7 +180,7 @@ export default function Home() {
                             <span className="text-base sm:text-lg">📅</span> {formatarParaBR(grupo.data_viagem)} {grupo.horario && <span className="opacity-60 font-medium ml-1">às {grupo.horario}</span>}
                           </span>
                           {grupo.destino && (
-                            <span className="px-3 py-1.5 rounded-lg text-[10px] sm:text-[11px] font-black uppercase tracking-widest border bg-white text-indigo-700 border-indigo-200 shadow-sm flex items-center gap-1">
+                            <span className="px-3 py-1.5 rounded-lg text-[10px] sm:text-[11px] font-black uppercase tracking-widest border border-indigo-200 bg-white text-indigo-700 shadow-sm flex items-center gap-1">
                               <span>📍</span> {grupo.cidade ? `${grupo.cidade} (${grupo.destino})` : grupo.destino}
                             </span>
                           )}
@@ -319,13 +319,16 @@ export default function Home() {
               <span className="relative z-10 uppercase tracking-widest truncate">Pesquisar Histórico</span>
             </button>
 
-            <button 
-              onClick={() => router.push('/admin')} 
-              className="group relative inline-flex items-center justify-center gap-2 sm:gap-3 bg-indigo-600 text-white font-black text-xs sm:text-sm md:text-base px-6 sm:px-8 py-3.5 sm:py-4 rounded-full shadow-[0_0_40px_rgba(79,70,229,0.3)] hover:shadow-[0_0_60px_rgba(79,70,229,0.5)] transition-all duration-300 hover:-translate-y-1 active:scale-95 border border-indigo-500 overflow-hidden w-[90%] sm:w-auto"
-            >
-              <span className="relative z-10 text-lg sm:text-xl">⚙️</span>
-              <span className="relative z-10 uppercase tracking-widest truncate">Painel de Gestão</span>
-            </button>
+            {/* 👇 CORREÇÃO CRÍTICA: O BOTÃO SÓ APARECE SE O USUÁRIO FOR ADMIN 👇 */}
+            {usuarioAtual?.isAdmin && (
+              <button 
+                onClick={() => router.push('/admin')} 
+                className="group relative inline-flex items-center justify-center gap-2 sm:gap-3 bg-indigo-600 text-white font-black text-xs sm:text-sm md:text-base px-6 sm:px-8 py-3.5 sm:py-4 rounded-full shadow-[0_0_40px_rgba(79,70,229,0.3)] hover:shadow-[0_0_60px_rgba(79,70,229,0.5)] transition-all duration-300 hover:-translate-y-1 active:scale-95 border border-indigo-500 overflow-hidden w-[90%] sm:w-auto"
+              >
+                <span className="relative z-10 text-lg sm:text-xl">⚙️</span>
+                <span className="relative z-10 uppercase tracking-widest truncate">Painel de Gestão</span>
+              </button>
+            )}
 
             <button 
               onClick={lidarComLogout} 
