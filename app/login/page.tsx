@@ -22,7 +22,8 @@ export default function LoginPage() {
       setErro(res.error);
       setLoading(false);
     } else {
-      router.push("/admin");
+      // Vai para a tela inicial (Portal) em vez de ir direto para o Admin
+      router.push("/");
     }
   };
 
