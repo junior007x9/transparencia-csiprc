@@ -87,7 +87,6 @@ export default function AdminPage() {
   const [usuariosSistema, setUsuariosSistema] = useState<any[]>([]);
   const [modalUsuarios, setModalUsuarios] = useState(false);
 
-  // Estados Formulário de Novo Utilizador
   const [novoNome, setNovoNome] = useState("");
   const [novoEmail, setNovoEmail] = useState("");
   const [novoSenha, setNovoSenha] = useState("");
@@ -100,15 +99,19 @@ export default function AdminPage() {
   const [relatorio, setRelatorio] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // FILTROS FINANCEIROS
   const hoje = new Date();
   const [filtroMes, setFiltroMes] = useState((hoje.getMonth() + 1).toString().padStart(2, '0'));
   const [filtroAno, setFiltroAno] = useState(hoje.getFullYear().toString());
 
   const [modalViagem, setModalViagem] = useState<any | null>(null);
   const [modalRelatorio, setModalRelatorio] = useState(false);
-  const [modalFolga, setModalFolga] = useState<any | null>(null);
   const [modalEditar, setModalEditar] = useState<any | null>(null);
+  
+  // NOVOS MODAIS SIMPLIFICADOS
+  const [modalStatus, setModalStatus] = useState<{id: number, nome: string, plantaoId: number, tipo: string, valor: string} | null>(null);
+  const [modalTroca, setModalTroca] = useState<{id: number, atualId: number, nome: string} | null>(null);
+  const [novaTrocaId, setNovaTrocaId] = useState("");
+  const [modalEscala, setModalEscala] = useState<{id: number, nome: string} | null>(null);
 
   const [editDados, setEditDados] = useState({ data_viagem: '', horario: '', cidade: '', adolescente: '', observacoes: '' });
 
@@ -163,7 +166,7 @@ export default function AdminPage() {
     );
   }
 
-  // --- GESTÃO DE USUÁRIOS ---
+  // GESTÃO DE USUÁRIOS
   const abrirModalUsuarios = async () => {
     const lista = await listarUsuarios();
     setUsuariosSistema(lista);
@@ -194,8 +197,8 @@ export default function AdminPage() {
       setUsuariosSistema(lista);
     }
   };
-  // --------------------------
 
+  // DRAG & DROP
   const onDragStart = (e: any, index: number, itemType: string, groupId: number | string) => {
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("itemIndex", index);
@@ -275,6 +278,13 @@ export default function AdminPage() {
 
   const confirmarViagem = async (destino: string) => {
     if (!modalViagem || salvandoViagem) return;
+    
+    // Regra da Baixa Interna
+    if (destino === 'Atividade Interna' && !viagemObservacoes.trim()) {
+      alert("⚠️ Para dar Baixa Interna, é obrigatório preencher a Observação justificando (ex: 'Ida à oficina', 'Transporte interno').");
+      return;
+    }
+
     setSalvandoViagem(true);
 
     try {
@@ -349,6 +359,8 @@ export default function AdminPage() {
       let statusTexto = 'Diárias para folha suplementar.';
       if (destino === 'Viagem SEI' || obsFinal?.includes('Processo SEI:')) {
           statusTexto = 'Viagem sem custo (Registro via SEI).';
+      } else if (destino === 'Atividade Interna') {
+          statusTexto = 'Atividade administrativa / Interna.';
       }
       
       msg += `\n💰 *Status:* ${statusTexto}`;
@@ -390,6 +402,8 @@ export default function AdminPage() {
     let statusTexto = 'Diárias para folha suplementar.';
     if (grupoSelecionado.destino === 'Viagem SEI' || grupoSelecionado.observacoes?.includes('Processo SEI:')) {
         statusTexto = 'Viagem sem custo (Registro via SEI).';
+    } else if (grupoSelecionado.destino === 'Atividade Interna') {
+        statusTexto = 'Atividade administrativa / Interna.';
     }
 
     msg += `\n💰 *Status:* ${statusTexto}`;
@@ -429,11 +443,29 @@ export default function AdminPage() {
     }
   };
 
-  const salvarNovaFolga = async () => {
-    if (!modalFolga || !modalFolga.data) return;
-    const [ano, mes, dia] = modalFolga.data.split('-');
-    await atualizarServidor(modalFolga.id, { data_folga: `${dia}/${mes}` });
-    setModalFolga(null); 
+  // NOVA LÓGICA DE STATUS / FOLGAS
+  const handleSalvarStatus = async () => {
+    if (!modalStatus) return;
+    const texto = modalStatus.valor ? modalStatus.valor.trim() : '';
+    const statusFinal = texto ? `${modalStatus.tipo}: ${texto}` : modalStatus.tipo;
+
+    await atualizarServidor(modalStatus.id, { data_folga: statusFinal });
+
+    // Se for Férias ou Atestado, manda direto pro final da fila
+    if (modalStatus.tipo === 'Férias' || modalStatus.tipo === 'Atestado') {
+      const plantao = plantoes.find(p => p.id === modalStatus.plantaoId);
+      if (plantao) {
+         const fila = [...plantao.servidores];
+         const index = fila.findIndex((s:any) => s.id === modalStatus.id);
+         if (index !== -1) {
+            const [removido] = fila.splice(index, 1);
+            fila.push(removido);
+            await reordenarFila('servidores', fila.map(s => s.id));
+         }
+      }
+    }
+    
+    setModalStatus(null); 
     carregar();
   };
 
@@ -461,13 +493,16 @@ export default function AdminPage() {
   };
   
   const handleRemoverMembro = async (id: number, nome: string) => { 
-    if (confirm(`⚠️ REMOVER "${nome}"?`)) { await removerServidor(id); carregar(); } 
+    if (confirm(`⚠️ REMOVER "${nome}" permanentemente?`)) { await removerServidor(id); carregar(); } 
   };
   
-  const handleTrocarPlantao = async (id: number, atualId: number) => {
-    const lista = plantoes.map(p => `${p.id}: ${p.nome}`).join("\n");
-    const novoId = prompt(`ID da nova equipa:\n\n${lista}`, atualId.toString());
-    if (novoId && parseInt(novoId) !== atualId) { await atualizarServidor(id, { plantao_id: parseInt(novoId) }); carregar(); }
+  // NOVA LÓGICA DE TROCA
+  const handleSalvarTroca = async () => {
+    if (novaTrocaId && parseInt(novaTrocaId) !== modalTroca?.atualId) {
+      await atualizarServidor(modalTroca!.id, { plantao_id: parseInt(novaTrocaId) });
+    }
+    setModalTroca(null);
+    carregar();
   };
 
   const handleAdicionarEquipeTecnica = async () => {
@@ -486,38 +521,14 @@ export default function AdminPage() {
     }
   };
 
-  const handleAtualizarEscala = async (plantaoId: number, plantaoNome: string) => {
-    const hoje = new Date();
-    const nomeMes = hoje.toLocaleString('pt-BR', { month: 'long' }).toUpperCase();
-    const ano = hoje.getFullYear();
-    const ultimoDia = new Date(ano, hoje.getMonth() + 1, 0).getDate();
-    
-    const impares = [];
-    const pares = [];
-    for (let i = 1; i <= ultimoDia; i++) {
-      if (i % 2 === 0) pares.push(i);
-      else impares.push(i);
+  // NOVA LÓGICA DE ESCALA RÁPIDA
+  const handleSetEscala = async (valor: string) => {
+    if (modalEscala) {
+      await atualizarDiasPlantao(modalEscala.id, valor);
+      setModalEscala(null);
+      carregar();
     }
-
-    const opcao = prompt(
-      `Definir escala para a equipe ${plantaoNome} em ${nomeMes}/${ano}:\n\n` +
-      `1 - Dias Ímpares\n(Dias: ${impares.join(', ')})\n\n` +
-      `2 - Dias Pares\n(Dias: ${pares.join(', ')})\n\n` +
-      `3 - Remover Escala\n\n` +
-      `Digite o número da opção desejada:`
-    );
-    
-    let novaEscala = "";
-    if (opcao === "1") novaEscala = "Dias Ímpares";
-    else if (opcao === "2") novaEscala = "Dias Pares";
-    else if (opcao === "3") novaEscala = "";
-    else return;
-
-    await atualizarDiasPlantao(plantaoId, novaEscala);
-    carregar();
   };
-
-  if (loading) return <div className="min-h-screen bg-[#020617] flex justify-center items-center"><div className="w-16 h-16 border-4 border-slate-800 border-t-emerald-500 rounded-full animate-spin"></div></div>;
 
   const historicoAgrupado = agruparViagens(relatorio);
   
@@ -538,6 +549,84 @@ export default function AdminPage() {
       <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-emerald-900/20 to-transparent pointer-events-none"></div>
       <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none"></div>
 
+      {/* NOVO MODAL DE ESCALA RÁPIDA */}
+      {modalEscala && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-sm shadow-2xl p-8 text-center animate-in zoom-in-95">
+            <h3 className="text-xl font-black text-white mb-2 uppercase tracking-widest">📅 Definir Escala</h3>
+            <p className="text-xs text-slate-400 mb-6 font-medium">Equipe: <strong className="text-white">{modalEscala.nome}</strong></p>
+
+            <div className="flex flex-col gap-3 mb-6">
+               <button onClick={() => handleSetEscala('Dias Ímpares')} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-lg active:scale-95">Dias Ímpares</button>
+               <button onClick={() => handleSetEscala('Dias Pares')} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-lg active:scale-95">Dias Pares</button>
+               <button onClick={() => handleSetEscala('')} className="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest transition-all active:scale-95">A Definir (Limpar)</button>
+            </div>
+
+            <button onClick={() => setModalEscala(null)} className="w-full text-slate-500 hover:text-white uppercase font-black text-xs tracking-widest transition-colors py-2">Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* NOVO MODAL DE TRANSFERÊNCIA SEM PERDA */}
+      {modalTroca && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-sm shadow-2xl p-8 text-center animate-in zoom-in-95">
+            <h3 className="text-xl font-black text-white mb-2 uppercase tracking-widest">🔄 Mover Servidor</h3>
+            <p className="text-xs text-slate-400 mb-6 font-medium">Selecione o novo plantão para <strong className="text-white">{modalTroca.nome}</strong>. O histórico de viagens será mantido.</p>
+
+            <select value={novaTrocaId} onChange={e => setNovaTrocaId(e.target.value)} className="w-full bg-slate-950 border border-slate-700 text-white p-4 rounded-xl mb-6 outline-none focus:border-emerald-500 font-bold">
+               <option value="">Selecione a equipe...</option>
+               {plantoes.map(p => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+               ))}
+            </select>
+
+            <div className="flex gap-3">
+              <button onClick={() => setModalTroca(null)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-colors">Cancelar</button>
+              <button onClick={handleSalvarTroca} disabled={!novaTrocaId || parseInt(novaTrocaId) === modalTroca.atualId} className="flex-[1.5] bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95">Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NOVO MODAL INTELIGENTE DE STATUS / FOLGAS */}
+      {modalStatus && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-sm shadow-2xl p-8 text-center animate-in zoom-in-95">
+            <h3 className="text-xl font-black text-white mb-2 uppercase tracking-widest">Definir Status</h3>
+            <p className="text-xs text-slate-400 mb-6 font-medium">Servidor: <strong className="text-white">{modalStatus.nome}</strong></p>
+
+            <div className="flex gap-2 mb-4">
+              <button onClick={() => setModalStatus({...modalStatus, tipo: 'Folga'})} className={`flex-1 py-2 rounded-xl text-xs font-black uppercase transition-colors ${modalStatus.tipo === 'Folga' ? 'bg-amber-500 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>Folga</button>
+              <button onClick={() => setModalStatus({...modalStatus, tipo: 'Férias'})} className={`flex-1 py-2 rounded-xl text-xs font-black uppercase transition-colors ${modalStatus.tipo === 'Férias' ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>Férias</button>
+              <button onClick={() => setModalStatus({...modalStatus, tipo: 'Atestado'})} className={`flex-1 py-2 rounded-xl text-xs font-black uppercase transition-colors ${modalStatus.tipo === 'Atestado' ? 'bg-red-500 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>Atestado</button>
+            </div>
+
+            <div className="text-left mb-6">
+               <label className="text-[10px] uppercase font-bold text-slate-400 ml-1">Dia / Mês (Ex: 15/08)</label>
+               <input
+                 type="text"
+                 placeholder="DD/MM"
+                 maxLength={5}
+                 value={modalStatus.valor}
+                 onChange={(e) => {
+                    let val = e.target.value.replace(/[^0-9/]/g, '');
+                    if (val.length === 2 && !val.includes('/') && e.nativeEvent.inputType !== 'deleteContentBackward') val += '/';
+                    setModalStatus({...modalStatus, valor: val});
+                 }}
+                 className="w-full bg-slate-950 border border-slate-700 text-white p-4 rounded-xl mt-1 outline-none focus:border-emerald-500 transition-all font-bold text-center text-lg tracking-widest"
+               />
+               <p className="text-[9px] text-slate-500 mt-2 text-center">Férias/Atestados movem o servidor para o fim da fila.</p>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setModalStatus(null)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-colors">Cancelar</button>
+              <button onClick={handleSalvarStatus} className="flex-[1.5] bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95">Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL DE GESTÃO DE ACESSOS (EXCLUSIVO ADMIN) */}
       {modalUsuarios && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 md:p-8 bg-black/90 backdrop-blur-md animate-in fade-in">
@@ -551,7 +640,6 @@ export default function AdminPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 flex-1 overflow-hidden">
-              {/* FORMULÁRIO DE CADASTRO */}
               <form onSubmit={handleSalvarUsuario} className="lg:col-span-2 p-6 bg-slate-950/40 border-r border-slate-800 space-y-4 overflow-y-auto">
                 <h4 className="text-xs uppercase font-black text-emerald-400 tracking-wider">Cadastrar Novo Usuário</h4>
                 <div>
@@ -574,7 +662,6 @@ export default function AdminPage() {
                 <button type="submit" className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-xs tracking-widest rounded-xl transition-all shadow-lg active:scale-95">Salvar Acesso</button>
               </form>
 
-              {/* LISTA DE LOGINS ATIVOS */}
               <div className="lg:col-span-3 p-6 overflow-y-auto space-y-3">
                 <h4 className="text-xs uppercase font-black text-slate-400 tracking-wider">Acessos Cadastrados</h4>
                 {usuariosSistema.map((user: any) => (
@@ -601,7 +688,7 @@ export default function AdminPage() {
           <div className="bg-slate-900 border border-emerald-500/50 rounded-[2rem] w-full max-w-md shadow-[0_0_50px_rgba(16,185,129,0.15)] p-8 text-center transform animate-in zoom-in-95 duration-200">
             <div className="text-6xl mb-4 animate-bounce">📋</div>
             <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Mensagem Pronta!</h3>
-            <p className="text-slate-400 text-sm mb-6">Abaixo está o resumo da viagem gerado para você copiar e enviar à direção.</p>
+            <p className="text-slate-400 text-sm mb-6">Abaixo está o resumo gerado para você copiar e enviar à direção.</p>
             
             <textarea readOnly value={relatorioGerado} className="w-full bg-slate-950 border border-slate-800 text-emerald-400 font-mono text-xs sm:text-sm p-4 rounded-xl focus:outline-none min-h-[220px] mb-6 resize-none shadow-inner" />
 
@@ -653,7 +740,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* MODAL DE VIAGEM UNIFICADO E MELHORADO */}
+      {/* MODAL DE VIAGEM COM OPÇÃO DE BAIXA INTERNA */}
       {modalViagem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-md shadow-2xl p-6 md:p-8 animate-in zoom-in-95">
@@ -738,15 +825,15 @@ export default function AdminPage() {
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Cidade Destino</label>
+                  <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Cidade Destino (Opcional para Baixas)</label>
                   <input type="text" placeholder="Ex: Coelho Neto" value={viagemCidade} onChange={(e) => setViagemCidade(e.target.value)} disabled={salvandoViagem} className="w-full mt-1 bg-slate-900 border border-slate-700 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none" />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Adolescente</label>
+                  <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Adolescente (Opcional)</label>
                   <input type="text" placeholder="Ex: João da Silva" value={viagemAdolescente} onChange={(e) => setViagemAdolescente(e.target.value)} disabled={salvandoViagem} className="w-full mt-1 bg-slate-900 border border-slate-700 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none" />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Observações</label>
+                  <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Observações (Obrigatório para Baixa Interna)</label>
                   <textarea placeholder="Alguma informação extra ou nota..." value={viagemObservacoes} onChange={(e) => setViagemObservacoes(e.target.value)} disabled={salvandoViagem} className="w-full mt-1 bg-slate-900 border border-slate-700 text-white px-4 py-3 rounded-xl focus:border-emerald-500 focus:outline-none min-h-[70px]" />
                 </div>
               </div>
@@ -762,23 +849,16 @@ export default function AdminPage() {
               <button onClick={() => confirmarViagem('Viagem SEI')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all active:scale-95 ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/50 text-purple-400 shadow-lg shadow-purple-900/20'}`}>
                 {salvandoViagem ? '⏳ SALVANDO...' : <>📄 Viagem SEI <span className="text-[10px] ml-2 opacity-70 bg-purple-900/50 px-2 py-0.5 rounded">Sem custo</span></>}
               </button>
+              
+              <div className="w-full border-t border-slate-800 my-1"></div>
+              
+              {/* NOVO BOTÃO DE BAIXA ADMINISTRATIVA/INTERNA */}
+              <button onClick={() => confirmarViagem('Atividade Interna')} disabled={salvandoViagem} className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all active:scale-95 ${salvandoViagem ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 shadow-lg'}`}>
+                {salvandoViagem ? '⏳ SALVANDO...' : <>🏢 Baixa Interna / Admin <span className="text-[10px] ml-2 opacity-70 bg-slate-950 px-2 py-0.5 rounded text-slate-400">Só Obs.</span></>}
+              </button>
             </div>
             
             <button onClick={() => setModalViagem(null)} disabled={salvandoViagem} className="w-full text-slate-500 hover:text-white uppercase font-black text-xs tracking-widest py-2 transition-colors">Cancelar</button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE FOLGA */}
-      {modalFolga && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-sm shadow-2xl p-8 text-center animate-in zoom-in-95">
-            <h3 className="text-xl font-black text-white mb-6 uppercase tracking-widest">📅 Definir Folga</h3>
-            <input type="date" className="w-full bg-slate-950 border border-slate-700 text-white p-4 rounded-xl mb-6 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all font-bold" value={modalFolga.data || ""} onChange={(e) => setModalFolga({...modalFolga, data: e.target.value})} />
-            <div className="flex gap-3">
-              <button onClick={() => setModalFolga(null)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-colors">Cancelar</button>
-              <button onClick={salvarNovaFolga} className="flex-[1.5] bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95">Salvar</button>
-            </div>
           </div>
         </div>
       )}
@@ -857,7 +937,7 @@ export default function AdminPage() {
                         <span className="bg-slate-800 text-slate-300 px-3 py-1.5 rounded-lg text-[11px] font-black tracking-widest shadow-inner border border-slate-700">
                           📅 {formatarParaBR(grupo.data_viagem)} {grupo.horario && <span className="opacity-50 ml-1 font-medium">{grupo.horario}</span>}
                         </span>
-                        <span className="text-[10px] font-black uppercase text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-lg tracking-widest">
+                        <span className={`text-[10px] font-black uppercase bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-lg tracking-widest ${grupo.destino === 'Atividade Interna' ? 'text-slate-400' : 'text-indigo-400'}`}>
                           📍 {grupo.cidade || grupo.destino}
                         </span>
                       </div>
@@ -1067,7 +1147,7 @@ export default function AdminPage() {
                   </div>
                   
                   <div className="flex flex-wrap items-center gap-3">
-                    <button onClick={() => handleAtualizarEscala(plantao.id, plantao.nome)} className="bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 px-5 py-3 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all active:scale-95">📅 Definir Escala</button>
+                    <button onClick={() => setModalEscala({id: plantao.id, nome: plantao.nome})} className="bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 px-5 py-3 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all active:scale-95">📅 Definir Escala</button>
                     <button onClick={() => handleAdicionarMembro(plantao.id, plantao.nome)} className="bg-white/10 hover:bg-white/20 text-white border border-white/10 px-5 py-3 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all active:scale-95">➕ Add Educador</button>
                     {!ePortaria && plantao.servidores.length >= 2 && (
                       <button onClick={() => abrirModalViagem('dupla', 0, plantao.id, nomeDupla)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-indigo-900/50 active:scale-95 flex items-center gap-2"><span>✈️</span> Lançar Dupla</button>
@@ -1102,7 +1182,10 @@ export default function AdminPage() {
                                 <button onClick={() => handleEditTelefone(s.id, 'servidor', s.telefone, s.nome)} className="text-[9px] bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-700 px-2.5 py-1.5 rounded uppercase font-bold transition-colors shadow-sm">{s.telefone ? '📱 Editar Tel' : '📱 Add Tel'}</button>
                                 {s.telefone && <button onClick={() => abrirWhatsApp(s.telefone, s.nome)} className="text-[9px] bg-emerald-900/20 text-emerald-400 border border-emerald-900/30 px-2.5 py-1.5 rounded uppercase font-black hover:bg-emerald-600 hover:text-white transition-all shadow-sm">💬 WhatsApp</button>}
                                 <span className="w-px h-4 bg-slate-800 mx-1"></span>
-                                <button onClick={() => handleTrocarPlantao(s.id, plantao.id)} className="text-[9px] text-slate-500 hover:text-slate-300 uppercase font-bold transition-colors">🔄 Mover</button>
+                                
+                                {/* BOTÃO MOVER ATUALIZADO */}
+                                <button onClick={() => setModalTroca({id: s.id, atualId: plantao.id, nome: s.nome})} className="text-[9px] text-slate-500 hover:text-slate-300 uppercase font-bold transition-colors">🔄 Mover</button>
+                                
                                 <button onClick={() => handleRemoverMembro(s.id, s.nome)} className="text-[9px] text-red-500/50 hover:text-red-400 uppercase font-bold transition-colors">🗑️ Apagar</button>
                               </div>
                             </td>
@@ -1110,10 +1193,11 @@ export default function AdminPage() {
                             <td className="p-4 text-center">
                               <div className="flex flex-col items-center gap-2">
                                 <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border shadow-inner ${s.data_folga ? "bg-amber-900/20 text-amber-400 border-amber-900/30" : "bg-slate-900 text-slate-500 border-slate-800"}`}>
-                                  🌴 {s.data_folga || 'Sem folga'}
+                                  {s.data_folga || 'Disponível'}
                                 </span>
                                 <div className="flex gap-2">
-                                  <button onClick={() => setModalFolga({id: s.id, data: ''})} className="text-slate-400 hover:text-white text-[9px] uppercase tracking-widest font-bold transition-colors bg-slate-800 px-2 py-1 rounded">Definir</button>
+                                  {/* BOTÃO DEFINIR STATUS ATUALIZADO */}
+                                  <button onClick={() => setModalStatus({id: s.id, nome: s.nome, plantaoId: plantao.id, tipo: 'Folga', valor: ''})} className="text-slate-400 hover:text-white text-[9px] uppercase tracking-widest font-bold transition-colors bg-slate-800 px-2 py-1 rounded">Status</button>
                                   {s.data_folga && <button onClick={() => limparFolga(s.id)} className="text-red-400 hover:text-white text-[9px] font-bold bg-red-900/30 px-2 py-1 rounded">X</button>}
                                 </div>
                               </div>
@@ -1148,7 +1232,6 @@ export default function AdminPage() {
         </div>
       </div>
       
-      {/* CSS Customizado Scrollbar */}
       <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); border-radius: 10px; }
