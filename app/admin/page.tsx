@@ -611,7 +611,7 @@ export default function AdminPage() {
                  value={modalStatus.valor}
                  onChange={(e) => {
                     let val = e.target.value.replace(/[^0-9/]/g, '');
-                    if (val.length === 2 && !val.includes('/') && e.nativeEvent.inputType !== 'deleteContentBackward') val += '/';
+                    if (val.length === 2 && !val.includes('/') && (e.nativeEvent as InputEvent).inputType !== 'deleteContentBackward') val += '/';
                     setModalStatus({...modalStatus, valor: val});
                  }}
                  className="w-full bg-slate-950 border border-slate-700 text-white p-4 rounded-xl mt-1 outline-none focus:border-emerald-500 transition-all font-bold text-center text-lg tracking-widest"
